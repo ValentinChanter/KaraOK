@@ -8,9 +8,13 @@
 # venv
 /venv
 
-# uploads
+# processed files
 /uploads/*
 !/uploads/.gitkeep
+/output/*
+!/output/tmp
+/output/tmp/*
+!/output/tmp/.gitkeep
 
 # testing
 /coverage
