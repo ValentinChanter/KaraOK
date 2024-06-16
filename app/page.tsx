@@ -5,7 +5,7 @@ import { useState, ChangeEvent, FormEvent } from 'react';
 const Home = () => {
   const [file, setFile] = useState<File | null>(null);
   const [outputFormat, setOutputFormat] = useState<string>('mp3');
-  const [modelFilename, setModelFilename] = useState<string>('UVR_MDXNET_KARA_2.onnx');
+  const [modelFilename, setModelFilename] = useState<string>('UVR_MDXNET_KARA_2');
   const [message, setMessage] = useState<string>('');
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -27,15 +27,17 @@ const Home = () => {
     formData.append('model_filename', modelFilename);
 
     try {
+      setMessage('Processing...');
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
+        // Remove timeout settings or make sure the request waits indefinitely
       });
       const result = await response.json();
       if (response.ok) {
-        setMessage('File successfully processed.');
+        setMessage(`Success: ${result.message}`);
       } else {
-        setMessage(result.error);
+        setMessage(`Error: ${result.error}`);
       }
     } catch (error) {
       setMessage('Error uploading file.');
@@ -59,14 +61,13 @@ const Home = () => {
           </select>
         </label>
         <br />
-        <label>
+        <label htmlFor="model">
           Model Filename:
-          <input
-            type="text"
-            value={modelFilename}
-            onChange={(e) => setModelFilename(e.target.value)}
-          />
         </label>
+        <select name="model" id="model" value={modelFilename} onChange={(e) => setModelFilename(e.target.value)}>
+            <option value="UVR_MDXNET_KARA_2.onnx">Instrumental with back vocals</option>
+            <option value="UVR-MDX-NET-Inst_HQ_3.onnx">Instrumental only</option>
+        </select>
         <br />
         <button type="submit">Upload and Separate</button>
       </form>
