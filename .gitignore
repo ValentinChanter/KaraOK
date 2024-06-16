@@ -9,7 +9,8 @@
 /venv
 
 # uploads
-/uploads
+/uploads/*
+!/uploads/.gitkeep
 
 # testing
 /coverage
