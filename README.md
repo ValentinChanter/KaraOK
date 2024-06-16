@@ -26,41 +26,59 @@ This app was tested with Node v20.14.0 and Python 3.10.12, with and without Nvid
 ## Installation
 
 1. Clone this repo and access it
-```bash
-git clone https://github.com/ValentinChanter/KaraOK
-cd KaraOK
-```
-2. Install node dependencies
-```bash
-npm install
-# or
-yarn
-# or
-pnpm install
-```
-3. (Optional) Create and switch to your virtual environment if needed
-```bash
-python -m venv /path/to/new/virtual/environment
-source /path/to/new/virtual/environment/bin/activate
-# or
-conda create --name <my-env>
-conda activate <my-env>
-```
-4. Install python dependencies
-```bash
-pip install -r requirements.txt
-```
+
+	```bash
+	git clone https://github.com/ValentinChanter/KaraOK
+	cd KaraOK
+	```
+2. If you don't have it already, install ffmpeg on your OS:
+
+- [Windows](https://www.gyan.dev/ffmpeg/builds/)
+- Ubuntu/Debian
+	```bash
+	apt-get update
+	apt-get install -y ffmpeg
+	```
+- MacOS
+	```bash
+	brew update
+	brew install ffmpeg
+	```
+3. Install node dependencies
+
+	```bash
+	npm install
+	# or
+	yarn
+	# or
+	pnpm install
+	```
+4. (Optional) Create and switch to your virtual environment if needed
+
+	```bash
+	python -m venv /path/to/new/virtual/environment
+	source /path/to/new/virtual/environment/bin/activate
+	# or
+	conda create --name <my-env>
+	conda activate <my-env>
+	```
+5. Install python dependencies
+
+	```bash
+	pip install -r requirements.txt
+	```
 
 ## Usage
 
 1. Run the development server. If you created a venv don't forget to activate it
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
+
+	```bash
+	npm run dev
+	# or
+	yarn dev
+	# or
+	pnpm dev
+	```
 
 2. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result. The Flask server will be running on [http://127.0.0.1:5328](http://127.0.0.1:5328).
 
