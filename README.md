@@ -46,7 +46,7 @@ This app was tested with Node v20.14.0 and Python 3.10.12, with and without Nvid
 	brew update
 	brew install ffmpeg
 	```
-1. Install node dependencies
+3. Install node dependencies
 
 	```bash
 	npm install
@@ -55,7 +55,7 @@ This app was tested with Node v20.14.0 and Python 3.10.12, with and without Nvid
 	# or
 	pnpm install
 	```
-2. (Optional) Create and switch to your virtual environment if needed
+4. (Optional) Create and switch to your virtual environment if needed
 
 	```bash
 	python -m venv /path/to/new/virtual/environment
@@ -64,7 +64,7 @@ This app was tested with Node v20.14.0 and Python 3.10.12, with and without Nvid
 	conda create --name <my-env>
 	conda activate <my-env>
 	```
-3. Install python dependencies
+5. Install python dependencies
 
 	```bash
 	pip install -r requirements.txt
