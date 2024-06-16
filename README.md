@@ -82,6 +82,18 @@ This app was tested with Node v20.14.0 and Python 3.10.12, with and without Nvid
 
 2. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result. The Flask server will be running on [http://127.0.0.1:5328](http://127.0.0.1:5328).
 
-## Performances
+## Troubleshooting
 
-Running audio and video processing on a computer without Nvidia GPU was tested to take around 5 minutes per song, whereas using a computer with GPU took around 1 minute per song.
+### Audio separation/lyrics generation takes too much time
+
+Unfortunately, if the computer hosting the api part of the app doesn't have hardware acceleration, the audio separation and vocals to lyrics part will take way more time.
+
+However, the first time a model is used, both for audio separation and lyrics generation, it will take a long time because it will need to download the model first.
+
+### Hardware acceleration is available but unused
+
+Please check out the Installation section of [audio-separator](https://pypi.org/project/audio-separator/) to properly configure python dependencies. If you're using `conda`, make sure you're using the command for the virtual environment instead of a command or alias executing for your base.
+
+### `sh: 1: python: not found` error on Ubuntu
+
+I solved this by installing `python-is-python3`.
