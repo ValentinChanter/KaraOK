@@ -5,7 +5,7 @@ import { useState, ChangeEvent, FormEvent } from 'react';
 const Home = () => {
   const [file, setFile] = useState<File | null>(null);
   const [outputFormat, setOutputFormat] = useState<string>('mp3');
-  const [modelFilename, setModelFilename] = useState<string>('UVR_MDXNET_KARA_2');
+  const [modelFilename, setModelFilename] = useState<string>('UVR_MDXNET_KARA_2.onnx');
   const [message, setMessage] = useState<string>('');
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
