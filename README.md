@@ -82,7 +82,7 @@ This app was tested with Node v20.14.0 and Python 3.10.12, with and without Nvid
 	pnpm dev
 	```
 
-2. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result. The Flask server will be running on [http://127.0.0.1:5328](http://127.0.0.1:5328).
+2. Open [http://localhost:3000](http://localhost:3000) with your browser to see the app. The Flask server will be running on [http://127.0.0.1:5328](http://127.0.0.1:5328).
 
 ## Troubleshooting
 
@@ -90,7 +90,7 @@ This app was tested with Node v20.14.0 and Python 3.10.12, with and without Nvid
 
 Unfortunately, if the computer hosting the api part of the app doesn't have hardware acceleration, the audio separation and vocals to lyrics part will take way more time.
 
-However, the first time a model is used, both for audio separation and lyrics generation, it will take a long time because it will need to download the model first.
+Besides, the first time a model is used both for audio separation and lyrics generation, it will take a long time because it will need to download the model(s) before processing.
 
 ### Hardware acceleration is available but unused
 
