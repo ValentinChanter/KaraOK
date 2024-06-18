@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, ChangeEvent, FormEvent } from 'react';
+import Image from "next/image"
 
 const Home = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -45,33 +46,36 @@ const Home = () => {
   };
 
   return (
-    <div>
-      <h1>Audio Separator</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Choose an audio file:
-          <input type="file" onChange={handleFileChange} accept=".mp3" required />
-        </label>
-        <br />
-        <label>
-          Output Format:
-          <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
-            <option value="mp3">MP3</option>
-            <option value="wav">WAV</option>
-          </select>
-        </label>
-        <br />
-        <label htmlFor="model">
-          Model Filename:
-        </label>
-        <select name="model" id="model" value={modelFilename} onChange={(e) => setModelFilename(e.target.value)}>
-            <option value="UVR_MDXNET_KARA_2.onnx">Instrumental with back vocals</option>
-            <option value="UVR-MDX-NET-Inst_HQ_3.onnx">Instrumental only</option>
-        </select>
-        <br />
-        <button type="submit">Upload and Separate</button>
-      </form>
-      {message && <p>{message}</p>}
+    <div className='relative flex min-h-screen flex-col justify-center overflow-hidden bg-gray-50 py-6'>
+      <div className="absolute inset-0 bg-[url(/img/grid.svg)] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
+      <div className='relative w-[740px] mx-auto bg-white px-6 pt-10 pb-8 shadow-xl ring-1 ring-gray-900/5'>
+        <div className='mx-auto text-black'>
+          <a href="https://github.com/ValentinChanter/KaraOK" target="_blank" className='flex flex-row justify-center mb-8'>
+            <Image src="/../public/logo.png" width={300} height={200} alt="KaraOK"/>
+          </a>
+            <form onSubmit={handleSubmit}>
+              <div className='mx-4 shadow-md px-8 py-4 rounded-lg flex flex-row justify-between mb-2'>
+                <label className='text-lg font-semibold'>1. Choose an audio file</label>
+                <input type="file" onChange={handleFileChange} accept=".mp3" required />
+              </div>
+              <div className='mx-4 shadow-md px-8 py-4 rounded-lg flex flex-row justify-between mb-2'>
+                <label htmlFor="model" className='text-lg font-semibold'>2. Choose your instrumental</label>
+                <select className="p-2 rounded-md bg-slate-100" name="model" id="model" value={modelFilename} onChange={(e) => setModelFilename(e.target.value)}>
+                    <option value="UVR_MDXNET_KARA_2.onnx">Instrumental with back vocals</option>
+                    <option value="UVR-MDX-NET-Inst_HQ_3.onnx">Instrumental only</option>
+                </select>
+              </div>
+              <div className='mx-4 mt-6 flex flex-row justify-center py-4'>
+                <button type="submit">OK! (en vrai mettre le OK qui s'anime ici non ?)</button>
+              </div>
+            </form>
+            <div className='mx-4 mt-6 flex flex-row justify-center py-4'>
+              {message && <p>{message}</p>}
+              (Ajouter un loader ici à la place de "Processing" pour montrer que ça charge ?)
+            </div>
+        </div>
+      
+      </div>
     </div>
   );
 };

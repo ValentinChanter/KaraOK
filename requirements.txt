@@ -3,3 +3,5 @@ Flask-Cors
 audio-separator[gpu]
 whisper-timestamped
 Werkzeug>=2.2,<3.0
+pykakasi
+moviepy
