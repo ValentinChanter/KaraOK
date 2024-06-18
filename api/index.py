@@ -5,6 +5,9 @@ from flask_cors import CORS
 import whisper_timestamped as whisper
 import json
 import torch
+import librosa
+import pykakasi
+from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
@@ -13,8 +16,103 @@ app.config['OUTPUT_FOLDER'] = 'output/'
 app.config['TMP_FOLDER'] = 'output/tmp/'
 app.config['ALLOWED_EXTENSIONS'] = {'mp3', 'wav'}
 
+# Function to check if the file extension is allowed
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+###### Functions for video rendering ######
+# Function to create 2 lists, one with the kanji and one with the furigana. They're matched by index.
+def get_furigana_mapping(text):
+    # Initialize kakasi for kanji to furigana conversion
+    kks = pykakasi.kakasi()
+
+    kanji_list = []
+    furigana_list = []
+    result = kks.convert(text)
+
+    for item in result:
+        orig = item['orig']
+        kata = item['kana']
+        hira = item['hira']
+        if orig != hira and orig != kata:
+            while orig[-1] == hira[-1]:
+                orig = orig[:-1]
+                hira = hira[:-1]
+            kanji_list.append(orig)
+            furigana_list.append(hira)
+
+    return [kanji_list, furigana_list]
+
+# Helper function to create text clips with furigana, also returns how many furigana translations were used
+def create_text_clip(text, start_time, end_time, color='black', fontsize=70, furigana=None, position=(0, 0), font='Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'):
+    text_clip = TextClip(text, fontsize=fontsize, color=color, font=font)
+    text_clip = text_clip.set_start(start_time).set_end(end_time).set_position(position)
+
+    furigana_clips = []
+    
+    if furigana:
+        kanji_list, furigana_list = furigana
+        for i in range(len(kanji_list)):
+            if i >= len(text):
+                break
+
+            furi = ""
+            kanji_pos = text.find(kanji_list[i])
+
+            if kanji_pos == -1:
+                continue
+
+            furi = furigana_list[i]
+
+            furi_clip = TextClip(furi, fontsize=fontsize//2, color=color, font=font)
+            furi_clip = furi_clip.set_start(start_time).set_end(end_time)
+            furigana_clips.append(furi_clip.set_position((position[0] + kanji_pos * fontsize, position[1] - fontsize // 2)))
+
+        return [[text_clip] + furigana_clips, len(furigana_clips)]
+    
+    return [[text_clip], 0]
+
+# Function to split big sentences in latin languages
+def split_text(segments):
+    new_segments = []
+    i = 0
+    for segment in segments:
+        curr_words = [segment["words"][0]]
+        for word in segment["words"][1:]:
+            first_char = word["text"][0]
+            if first_char.isupper() and first_char != "I":
+                new_segments.append({
+                    "id": i,
+                    "seek": segment["seek"],
+                    "start": curr_words[0]["start"],
+                    "end": curr_words[-1]["end"],
+                    "text": " ".join([w["text"] for w in curr_words]),
+                    "temperature": segment["temperature"],
+                    "avg_logprob": segment["avg_logprob"],
+                    "compression_ratio": segment["compression_ratio"],
+                    "no_speech_prob": segment["no_speech_prob"],
+                    "confidence": segment["confidence"],
+                    "words": curr_words
+                })
+                curr_words = [word]
+                i += 1
+            else:
+                curr_words.append(word)
+        new_segments.append({
+            "id": i,
+            "seek": segment["seek"],
+            "start": curr_words[0]["start"],
+            "end": curr_words[-1]["end"],
+            "text": " ".join([w["text"] for w in curr_words]),
+            "temperature": segment["temperature"],
+            "avg_logprob": segment["avg_logprob"],
+            "compression_ratio": segment["compression_ratio"],
+            "no_speech_prob": segment["no_speech_prob"],
+            "confidence": segment["confidence"],
+            "words": curr_words
+        })
+
+    return new_segments
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -31,29 +129,30 @@ def upload_file():
         file.save(filename)
 
         # Get parameters from the form
-        output_format = request.form.get('output_format')
         model_filename = request.form.get('model_filename')
 
         try:
             # Perform audio separation
             separator = Separator(
                 output_dir=app.config['TMP_FOLDER'],
-                output_format=output_format
+                output_format="wav"
             )
             separator.load_model(model_filename=model_filename)
             separator.separate(filename)
 
             # Define the output file name based on the chosen model and output format
             base_model_filename = os.path.splitext(model_filename)[0]
-            output_filename = f"{base_filename}_(Vocals)_{base_model_filename}.{output_format}"
-            output_filepath = os.path.join(app.config['TMP_FOLDER'], output_filename)
+            vocals_filename = f"{base_filename}_(Vocals)_{base_model_filename}.wav"
+            vocals_filepath = os.path.join(app.config['TMP_FOLDER'], vocals_filename)
+            inst_filename = f"{base_filename}_(Instrumental)_{base_model_filename}.wav"
+            inst_filepath = os.path.join(app.config['TMP_FOLDER'], inst_filename)
 
             # Check if the separated file exists
-            if not os.path.exists(output_filepath):
+            if not os.path.exists(inst_filepath):
                 return jsonify({'error': 'Audio separation failed, file not found'}), 500
 
             # Load audio for Whisper
-            audio = whisper.load_audio(output_filepath)
+            audio = whisper.load_audio(vocals_filepath)
 
             # Load Whisper model
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -62,16 +161,122 @@ def upload_file():
             # Perform transcription
             transcription_result = whisper.transcribe_timestamped(whisper_model, audio)
 
-            # Save transcription result
-            transcription_output = f"{base_filename}.json"
-            transcription_output_path = os.path.join(app.config['TMP_FOLDER'], transcription_output)
-            with open(transcription_output_path, 'w', encoding='utf-8') as f:
-                json.dump(transcription_result, f, indent=2, ensure_ascii=False)
+            ###### Video rendering ######
+            y, sr = librosa.load(inst_filepath)
+            audio_duration = librosa.get_duration(y=y, sr=sr)
+            
+            # Video properties
+            fps = 24
+            video_size = (1280, 720)  # HD resolution
 
+            # Font name
+            font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
+
+            # Detected language
+            lang = transcription_result["language"]
+            is_latin = lang == "en" or lang == "es" or lang == "fr" or lang == "de" or lang == "it" or lang == "pt"
+
+            # Add text clips based on the segments
+            text_clips = []
+            last_end = 0
+            base_position = (100, video_size[1] // 2)
+
+            # Create furigana mapping for the entire text
+            furigana_mapping = None
+            if lang == "ja":
+                lyrics = transcription_result["text"]
+                furigana_mapping = get_furigana_mapping(lyrics)
+
+            # Split big sentences in latin languages
+            if is_latin:
+                transcription_result['segments'] = split_text(transcription_result['segments'])
+
+            for i, segment in enumerate(transcription_result['segments']):
+                start = segment['start']
+                end = segment['end']
+                text = segment['text']
+
+                next_segment_exists = i < len(transcription_result['segments']) - 1
+                next_segment = None
+                duration_before_next = 0
+                if next_segment_exists:
+                    next_segment = transcription_result['segments'][i + 1]
+                    duration_before_next = next_segment['start'] - end
+
+                furigana_use_count = 0
+                
+                # Create progressive text clips
+                words = segment['words']
+                current_text = ""
+                x_offset = base_position[0]
+                y_position = base_position[1]
+                for j, word in enumerate(words):
+                    word_start = word['start']
+                    word_end = word['end']
+                    next_text = word['text']
+                    current_text += next_text + (" " if is_latin else "")
+                    remaining_text = text[len(current_text):]
+                    
+                    # Calculate position based on character count
+                    blue_text_end = word_end if remaining_text else (next_segment['start'] if next_segment_exists and duration_before_next < 3 else end + 3)
+                    blue_array = create_text_clip(current_text, word_start, blue_text_end, color='blue', furigana=furigana_mapping, position=base_position)
+                    blue_text_clip = blue_array[0]
+                    blue_count = blue_array[1]
+                    text_clips.extend(blue_text_clip)
+                    furigana_use_count += blue_count
+                    
+                    current_text_width = blue_text_clip[0].size[0]
+                    x_offset = base_position[0] + current_text_width
+
+                    if remaining_text:
+                        black_array = create_text_clip(remaining_text, word_start, word_end, color='black', furigana=furigana_mapping, position=(x_offset, y_position))
+                        black_text_clip = black_array[0]
+                        black_count = black_array[1]
+                        text_clips.extend(black_text_clip)
+                        furigana_use_count += black_count
+
+                # Check for break longer than 5 seconds
+                if i == 0 or start - last_end > 5:
+                    fade_clip = TextClip(text, fontsize=70, color='black', font=font).set_start(start-1).set_end(start)
+                    fade_clip = fade_clip.crossfadein(start if start < 1 else 1).set_position((base_position[0], y_position))
+                    text_clips.append(fade_clip)
+                
+                # Display next line of lyrics under current line if less than 5 seconds away
+                if next_segment_exists and duration_before_next < 5:
+                    next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=50, position=(base_position[0] + 80, y_position + 80))  # Adjusted position
+                    next_text_clip = next_array[0]
+                    next_count = next_array[1]
+                    text_clips.extend(next_text_clip)
+
+                # Remove kanji encountered in current segment from the mapping
+                if lang == "ja":
+                    furigana_use_count /= len(words)
+                    furigana_use_count = round(furigana_use_count)
+                    furigana_mapping[0] = furigana_mapping[0][furigana_use_count:]
+                    furigana_mapping[1] = furigana_mapping[1][furigana_use_count:]
+                
+                last_end = end
+
+            # Combine text clips with the video
+            # Load audio file
+            audio = AudioFileClip(inst_filepath)
+            final_video = CompositeVideoClip(text_clips, size=video_size, bg_color=(255, 255, 255)).set_duration(audio_duration).set_audio(audio)
+
+            # Save the final video
+            video_filename = f"{base_filename}.mp4"
+            video_filepath = os.path.join(app.config['OUTPUT_FOLDER'], video_filename)
+            final_video.write_videofile(video_filepath, fps=fps)
+
+            # Remove tmp files (vocals and instrumental)
+            os.remove(inst_filepath)
+            os.remove(vocals_filepath)
+
+            # Upload the final video
             return jsonify({
                 'message': 'File successfully processed',
-                'transcription_file': transcription_output
+                'video_file': video_filepath
             }), 200
+
         except Exception as e:
             return jsonify({'error': str(e)}), 500
     else:
