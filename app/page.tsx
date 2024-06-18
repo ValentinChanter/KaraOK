@@ -47,7 +47,7 @@ const Home = () => {
 
   return (
     <div className='relative flex min-h-screen flex-col justify-center overflow-hidden bg-gray-50 py-6'>
-      <div className="absolute inset-0 bg-[url(/img/grid.svg)] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
+      <div className="absolute inset-0 bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
       <div className='relative w-[740px] mx-auto bg-white px-6 pt-10 pb-8 shadow-xl ring-1 ring-gray-900/5'>
         <div className='mx-auto text-black'>
           <a href="https://github.com/ValentinChanter/KaraOK" target="_blank" className='flex flex-row justify-center mb-8'>
