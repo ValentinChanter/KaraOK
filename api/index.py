@@ -122,6 +122,8 @@ def upload_file():
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No file selected for uploading'}), 400
+    
+    alphabet = request.form.get('alphabet')
 
     if file and allowed_file(file.filename):
         base_filename = os.path.splitext(file.filename)[0]
@@ -181,26 +183,38 @@ def upload_file():
             last_end = 0
             base_position = (100, video_size[1] // 2)
 
-            # Create furigana mapping for the entire text
+            segments = transcription_result['segments']
+
+            # Idea: adjust text to contain leading kanji of next text if they're meant to be read together
+            # For japanese songs, create furigana mapping for the entire text or replace the text with romaji, depending on user input
             furigana_mapping = None
             if lang == "ja":
-                lyrics = transcription_result["text"]
-                furigana_mapping = get_furigana_mapping(lyrics)
+                if alphabet == "kanjitokana":
+                    lyrics = transcription_result["text"]
+                    furigana_mapping = get_furigana_mapping(lyrics)
+                else:
+                    kks = pykakasi.kakasi()
+                    for segment in segments:
+                        result = kks.convert(segment["text"])
+                        segment["text"] = " ".join([item["hepburn"] for item in result])
+                        segment["words"] = [{"start": w["start"], "end": w["end"], "text": kks.convert(w["text"])[0]["hepburn"]} for w in segment["words"]]
+                        # Using this method, single kanji read differently when paired with another kanji will be read differently.
+                        # Idea to fix this: use a japanese dictionary module to retrieve possible readings for each kanji and choose the correct one by matching with furigana_mapping or segment["text"] (romanized)
 
             # Split big sentences in latin languages
             if is_latin:
-                transcription_result['segments'] = split_text(transcription_result['segments'])
+                segments = split_text(segments)
 
-            for i, segment in enumerate(transcription_result['segments']):
+            for i, segment in enumerate(segments):
                 start = segment['start']
                 end = segment['end']
                 text = segment['text']
 
-                next_segment_exists = i < len(transcription_result['segments']) - 1
+                next_segment_exists = i < len(segments) - 1
                 next_segment = None
                 duration_before_next = 0
                 if next_segment_exists:
-                    next_segment = transcription_result['segments'][i + 1]
+                    next_segment = segments[i + 1]
                     duration_before_next = next_segment['start'] - end
 
                 furigana_use_count = 0
@@ -245,7 +259,6 @@ def upload_file():
                 if next_segment_exists and duration_before_next < 5:
                     next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=50, position=(base_position[0] + 80, y_position + 80))  # Adjusted position
                     next_text_clip = next_array[0]
-                    next_count = next_array[1]
                     text_clips.extend(next_text_clip)
 
                 # Remove kanji encountered in current segment from the mapping
