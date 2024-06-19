@@ -3,11 +3,13 @@ import os
 from audio_separator.separator import Separator
 from flask_cors import CORS
 import whisper_timestamped as whisper
-import json
 import torch
 import librosa
 import pykakasi
 from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip
+import requests
+import re
+import time
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
@@ -21,6 +23,29 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 ###### Functions for video rendering ######
+# Takes a word containing kanjis and returns a list of list: the first list are kanjis and the second are associated furiganas
+# Done by scraping jisho.org
+def get_furigana_from_jisho(word):
+    furiganas = []
+    
+    # Isolate kanjis (between 4E00 and 9FBF)
+    kanjis = [c for c in word if 0x4E00 <= ord(c) <= 0x9FBF]
+
+    try:
+        r = requests.get('https://jisho.org/search/' + word)
+        html = r.text
+
+        # Get first text between <span class="furigana"> and </span>
+        first_entry_and_more = html.split('<span class="furigana">')[1]
+        first_entry = re.split(r'</span>\s+?<span class="text">', first_entry_and_more)[0]
+
+        # Get all text between <span class="kanji-X-up kanji"> and </span>
+        furiganas = [x.split('</span>')[0] for x in re.split(r'<span class="kanji-\d+-up kanji">', first_entry) if '</span>' in x]
+    except:
+        pass
+    
+    return [kanjis, furiganas]
+
 # Function to create 2 lists, one with the kanji and one with the furigana. They're matched by index.
 def get_furigana_mapping(text):
     # Initialize kakasi for kanji to furigana conversion
@@ -35,11 +60,32 @@ def get_furigana_mapping(text):
         kata = item['kana']
         hira = item['hira']
         if orig != hira and orig != kata:
-            while orig[-1] == hira[-1]:
-                orig = orig[:-1]
-                hira = hira[:-1]
-            kanji_list.append(orig)
-            furigana_list.append(hira)
+            kanji_count = 0
+            for c in orig:
+                if 0x4E00 <= ord(c) <= 0x9FBF:
+                    kanji_count += 1
+
+            if kanji_count == 1:
+                while orig[-1] == hira[-1]:
+                    orig = orig[:-1]
+                    hira = hira[:-1]
+                kanji_list.append(orig)
+                furigana_list.append(hira)
+
+                continue
+            
+            res_map = get_furigana_from_jisho(orig)
+
+            if len(res_map[1]) == 0:
+                # Fallback method if jisho.org is not available (less accurate)
+                while orig[-1] == hira[-1]:
+                    orig = orig[:-1]
+                    hira = hira[:-1]
+                kanji_list.append(orig)
+                furigana_list.append(hira)
+            else:
+                kanji_list.extend(res_map[0])
+                furigana_list.extend(res_map[1])
 
     return [kanji_list, furigana_list]
 
@@ -115,7 +161,7 @@ def split_text(segments):
     return new_segments
 
 @app.route('/api/upload', methods=['POST'])
-def upload_file():
+def main():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part in the request'}), 400
 
@@ -134,6 +180,7 @@ def upload_file():
         model_filename = request.form.get('model_filename')
 
         try:
+            audio_start = time.time()
             # Perform audio separation
             separator = Separator(
                 output_dir=app.config['TMP_FOLDER'],
@@ -153,7 +200,10 @@ def upload_file():
             if not os.path.exists(inst_filepath):
                 return jsonify({'error': 'Audio separation failed, file not found'}), 500
 
+            audio_end = time.time()
+
             # Load audio for Whisper
+            transc_start = time.time()
             audio = whisper.load_audio(vocals_filepath)
 
             # Load Whisper model
@@ -162,8 +212,11 @@ def upload_file():
 
             # Perform transcription
             transcription_result = whisper.transcribe_timestamped(whisper_model, audio)
+            transc_end = time.time()
 
             ###### Video rendering ######
+            video_start = time.time()
+
             y, sr = librosa.load(inst_filepath)
             audio_duration = librosa.get_duration(y=y, sr=sr)
             
@@ -199,7 +252,7 @@ def upload_file():
                         segment["text"] = " ".join([item["hepburn"] for item in result])
                         segment["words"] = [{"start": w["start"], "end": w["end"], "text": kks.convert(w["text"])[0]["hepburn"]} for w in segment["words"]]
                         # Using this method, single kanji read differently when paired with another kanji will be read differently.
-                        # Idea to fix this: use a japanese dictionary module to retrieve possible readings for each kanji and choose the correct one by matching with furigana_mapping or segment["text"] (romanized)
+                        # Fix this by creating a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
 
             # Split big sentences in latin languages
             if is_latin:
@@ -280,13 +333,15 @@ def upload_file():
             video_filepath = os.path.join(app.config['OUTPUT_FOLDER'], video_filename)
             final_video.write_videofile(video_filepath, fps=fps)
 
+            video_end = time.time()
+
             # Remove tmp files (vocals and instrumental)
             os.remove(inst_filepath)
             os.remove(vocals_filepath)
 
             # Upload the final video
             return jsonify({
-                'message': 'File successfully processed',
+                'message': 'File successfully processed.\nAudio separation time: {:.2f}s\nTranscription time: {:.2f}s\nVideo rendering time: {:.2f}s'.format(audio_end - audio_start, transc_end - transc_start, video_end - video_start),
                 'video_file': video_filepath
             }), 200
 
