@@ -220,7 +220,7 @@ def main():
             # Debug inputs to avoid running the audio separation and transcription: comment after the try: until right above the video rendering
             inst_filepath = "output/tmp/inst.wav"
             vocals_filepath = "output/tmp/voc.wav"
-            with open("output/tmp/audio.json", "r") as f:
+            with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
                 transcription_result = json.load(f)
             """
 
