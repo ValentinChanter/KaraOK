@@ -260,7 +260,6 @@ def main():
                         result = kks.convert(segment["text"])
                         text_list = [item["hepburn"] for item in result]
                         tr_text_without_spaces = "".join(text_list)
-                        tr_text = " ".join(text_list)
 
                         acc_text = []
                         acc_start = 0
@@ -274,21 +273,16 @@ def main():
                                 curr_romaji = curr_res[0]["hepburn"]
 
                                 already_appended = False
-                                add_space_after = False
 
                                 if tr_text_without_spaces.startswith(acc_romaji):
                                     tr_text_without_spaces = tr_text_without_spaces[len(acc_romaji):]
-                                    tr_text = tr_text[len(acc_romaji):]
-                                    if tr_text.startswith(" "):
-                                        tr_text = tr_text[1:]
-                                        add_space_after = True
 
                                     if len(acc_text) > 0:
                                         if 0x4E00 <= ord(c) <= 0x9FBF: # If word with multiple kanjis
                                             words.append({
                                                 "start": acc_start,
                                                 "end": w["end"],
-                                                "text": acc_romaji + " " if add_space_after else "",
+                                                "text": acc_romaji,
                                                 "confidence": w["confidence"],
                                             })
 
@@ -297,24 +291,20 @@ def main():
                                             words.append({
                                                 "start": acc_start,
                                                 "end": w["start"],
-                                                "text": acc_romaji.split(curr_romaji)[0] + " " if add_space_after else "",
+                                                "text": acc_romaji.split(curr_romaji)[0],
                                                 "confidence": w["confidence"],
                                             })
 
-                                        if add_space_after:
-                                            add_space_after = False
                                         acc_text = []
                                     
                                     if j == len(w["text"]) - 1 and not already_appended: # If last character of word and not already appended
                                         words.append({
                                             "start": w["start"],
                                             "end": w["end"],
-                                            "text": curr_word + curr_romaji + " " if add_space_after else "",
+                                            "text": curr_word + curr_romaji,
                                             "confidence": w["confidence"],
                                         })
 
-                                        if add_space_after:
-                                            add_space_after = False
                                     else:
                                         curr_word += curr_romaji
 
@@ -324,7 +314,7 @@ def main():
                                         acc_start = w["start"]
                                     acc_text.append(c)
 
-                        segment["text"] = tr_text
+                        segment["text"] = "".join(text_list)
                         segment["words"] = words
 
                         # Using this method, single kanji read differently when paired with another kanji will be read differently.
