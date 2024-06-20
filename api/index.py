@@ -10,6 +10,7 @@ from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip
 import requests
 import re
 import time
+import json # For debug inputs
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
@@ -119,14 +120,14 @@ def create_text_clip(text, start_time, end_time, color='black', fontsize=70, fur
     return [[text_clip], 0]
 
 # Function to split big sentences in latin languages
-def split_text(segments):
+def split_text(segments, lang):
     new_segments = []
     i = 0
     for segment in segments:
         curr_words = [segment["words"][0]]
         for word in segment["words"][1:]:
             first_char = word["text"][0]
-            if first_char.isupper() and first_char != "I":
+            if lang != "en" and first_char.isupper() or lang == "en" and first_char.isupper() and first_char != "I":
                 new_segments.append({
                     "id": i,
                     "seek": segment["seek"],
@@ -215,6 +216,14 @@ def main():
             transc_end = time.time()
 
             ###### Video rendering ######
+            """
+            # Debug inputs to avoid running the audio separation and transcription: comment after the try: until right above the video rendering
+            inst_filepath = "output/tmp/inst.wav"
+            vocals_filepath = "output/tmp/voc.wav"
+            with open("output/tmp/audio.json", "r") as f:
+                transcription_result = json.load(f)
+            """
+
             video_start = time.time()
 
             y, sr = librosa.load(inst_filepath)
@@ -249,14 +258,71 @@ def main():
                     kks = pykakasi.kakasi()
                     for segment in segments:
                         result = kks.convert(segment["text"])
-                        segment["text"] = " ".join([item["hepburn"] for item in result])
-                        segment["words"] = [{"start": w["start"], "end": w["end"], "text": kks.convert(w["text"])[0]["hepburn"]} for w in segment["words"]]
+                        text_list = [item["hepburn"] for item in result]
+                        tr_text_without_spaces = "".join(text_list)
+                        tr_text = " ".join(text_list)
+
+                        acc_text = []
+                        acc_start = 0
+                        words = []
+                        for i, w in enumerate(segment["words"]):
+                            curr_word = ""
+                            for j, c in enumerate(w["text"]):
+                                acc_res = kks.convert("".join(acc_text) + c)
+                                curr_res = kks.convert(c)
+                                acc_romaji = acc_res[0]["hepburn"]
+                                curr_romaji = curr_res[0]["hepburn"]
+
+                                already_appended = False
+
+                                if tr_text_without_spaces.startswith(acc_romaji):
+                                    tr_text_without_spaces = tr_text_without_spaces[len(acc_romaji):]
+
+                                    if len(acc_text) > 0:
+                                        if 0x4E00 <= ord(c) <= 0x9FBF: # If word with multiple kanjis
+                                            words.append({
+                                                "start": acc_start,
+                                                "end": w["end"],
+                                                "text": acc_romaji + " ",
+                                                "confidence": w["confidence"],
+                                            })
+
+                                            already_appended = True
+                                        else:
+                                            words.append({
+                                                "start": acc_start,
+                                                "end": w["start"],
+                                                "text": acc_romaji.split(curr_romaji)[0] + " ",
+                                                "confidence": w["confidence"],
+                                            })
+
+                                        acc_text = []
+                                    
+                                    if j == len(w["text"]) - 1 and not already_appended: # If last character and not already appended
+                                        words.append({
+                                            "start": w["start"],
+                                            "end": w["end"],
+                                            "text": curr_word + curr_romaji + " ",
+                                            "confidence": w["confidence"],
+                                        })
+                                    else:
+                                        curr_word += curr_romaji
+
+                                    acc_text = []
+                                else:
+                                    if len(acc_text) == 0:
+                                        acc_start = w["start"]
+                                    acc_text.append(c)
+
+                        segment["text"] = tr_text
+                        segment["words"] = words
+
                         # Using this method, single kanji read differently when paired with another kanji will be read differently.
                         # Fix this by creating a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
 
             # Split big sentences in latin languages
             if is_latin:
-                segments = split_text(segments)
+                segments = split_text(segments, lang)
 
             for i, segment in enumerate(segments):
                 start = segment['start']
@@ -315,7 +381,7 @@ def main():
                     text_clips.extend(next_text_clip)
 
                 # Remove kanji encountered in current segment from the mapping
-                if lang == "ja":
+                if lang == "ja" and alphabet == "kanjitokana" and furigana_mapping and furigana_use_count > 0:
                     furigana_use_count /= len(words)
                     furigana_use_count = round(furigana_use_count)
                     furigana_mapping[0] = furigana_mapping[0][furigana_use_count:]
