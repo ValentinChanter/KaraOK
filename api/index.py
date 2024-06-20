@@ -274,16 +274,21 @@ def main():
                                 curr_romaji = curr_res[0]["hepburn"]
 
                                 already_appended = False
+                                add_space_after = False
 
                                 if tr_text_without_spaces.startswith(acc_romaji):
                                     tr_text_without_spaces = tr_text_without_spaces[len(acc_romaji):]
+                                    tr_text = tr_text[len(acc_romaji):]
+                                    if tr_text.startswith(" "):
+                                        tr_text = tr_text[1:]
+                                        add_space_after = True
 
                                     if len(acc_text) > 0:
                                         if 0x4E00 <= ord(c) <= 0x9FBF: # If word with multiple kanjis
                                             words.append({
                                                 "start": acc_start,
                                                 "end": w["end"],
-                                                "text": acc_romaji + " ",
+                                                "text": acc_romaji + " " if add_space_after else "",
                                                 "confidence": w["confidence"],
                                             })
 
@@ -292,19 +297,24 @@ def main():
                                             words.append({
                                                 "start": acc_start,
                                                 "end": w["start"],
-                                                "text": acc_romaji.split(curr_romaji)[0] + " ",
+                                                "text": acc_romaji.split(curr_romaji)[0] + " " if add_space_after else "",
                                                 "confidence": w["confidence"],
                                             })
 
+                                        if add_space_after:
+                                            add_space_after = False
                                         acc_text = []
                                     
-                                    if j == len(w["text"]) - 1 and not already_appended: # If last character and not already appended
+                                    if j == len(w["text"]) - 1 and not already_appended: # If last character of word and not already appended
                                         words.append({
                                             "start": w["start"],
                                             "end": w["end"],
-                                            "text": curr_word + curr_romaji + " ",
+                                            "text": curr_word + curr_romaji + " " if add_space_after else "",
                                             "confidence": w["confidence"],
                                         })
+
+                                        if add_space_after:
+                                            add_space_after = False
                                     else:
                                         curr_word += curr_romaji
 
