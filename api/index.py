@@ -433,8 +433,6 @@ def create_video(filename):
 @app.route('/api/upload', methods=['POST'])
 def main():
 
-    # URLS = ["https://youtu.be/BaW_jenozKc?si=DdQ2B1vV_FwNwYvQ"]
-
     error = False
     if not('file' not in request.files):
         file = request.files['file']
