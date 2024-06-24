@@ -10,6 +10,7 @@ from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip
 import requests
 import re
 import time
+import yt_dlp
 import json # For debug inputs
 
 app = Flask(__name__)
@@ -22,6 +23,29 @@ app.config['ALLOWED_EXTENSIONS'] = {'mp3', 'wav'}
 # Function to check if the file extension is allowed
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+def is_youtube_link(link):
+    youtube_regex = (
+        r'(https?://)?(www\.)?'
+        '(youtube\.com/watch\?v=|youtu\.be/)'
+        '[^\s]{11}'
+    )
+    return re.match(youtube_regex, link) is not None
+
+def get_youtube_video_title(url):
+    
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'forcetitle': True,
+        'skip_download': True,  # Ne télécharge pas la vidéo
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=False)
+        video_title = info_dict.get('title', None)
+
+    return video_title
 
 ###### Functions for video rendering ######
 # Takes a word containing kanjis and returns a list of list: the first list are kanjis and the second are associated furiganas
@@ -161,260 +185,300 @@ def split_text(segments, lang):
 
     return new_segments
 
-@app.route('/api/upload', methods=['POST'])
-def main():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part in the request'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected for uploading'}), 400
-    
+# Main function to create the video
+def create_video(filename):
     alphabet = request.form.get('alphabet')
+    
+    base_filename = os.path.splitext(filename)[0]
+    filename = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-    if file and allowed_file(file.filename):
-        base_filename = os.path.splitext(file.filename)[0]
-        filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(filename)
+    # Get parameters from the form
+    model_filename = request.form.get('model_filename')
 
-        # Get parameters from the form
-        model_filename = request.form.get('model_filename')
+    try:
+        audio_start = time.time()
+        # Perform audio separation
+        separator = Separator(
+            output_dir=app.config['TMP_FOLDER'],
+            output_format="wav"
+        )
+        separator.load_model(model_filename=model_filename)
+        separator.separate(filename)
 
-        try:
-            audio_start = time.time()
-            # Perform audio separation
-            separator = Separator(
-                output_dir=app.config['TMP_FOLDER'],
-                output_format="wav"
-            )
-            separator.load_model(model_filename=model_filename)
-            separator.separate(filename)
+        # Define the output file name based on the chosen model and output format
+        base_model_filename = os.path.splitext(model_filename)[0]
+        vocals_filename = f"{base_filename}_(Vocals)_{base_model_filename}.wav"
+        vocals_filepath = os.path.join(app.config['TMP_FOLDER'], vocals_filename)
+        inst_filename = f"{base_filename}_(Instrumental)_{base_model_filename}.wav"
+        inst_filepath = os.path.join(app.config['TMP_FOLDER'], inst_filename)
 
-            # Define the output file name based on the chosen model and output format
-            base_model_filename = os.path.splitext(model_filename)[0]
-            vocals_filename = f"{base_filename}_(Vocals)_{base_model_filename}.wav"
-            vocals_filepath = os.path.join(app.config['TMP_FOLDER'], vocals_filename)
-            inst_filename = f"{base_filename}_(Instrumental)_{base_model_filename}.wav"
-            inst_filepath = os.path.join(app.config['TMP_FOLDER'], inst_filename)
+        # Check if the separated file exists
+        if not os.path.exists(inst_filepath):
+            return jsonify({'error': 'Audio separation failed, file not found'}), 500
 
-            # Check if the separated file exists
-            if not os.path.exists(inst_filepath):
-                return jsonify({'error': 'Audio separation failed, file not found'}), 500
+        audio_end = time.time()
 
-            audio_end = time.time()
+        # Load audio for Whisper
+        transc_start = time.time()
+        audio = whisper.load_audio(vocals_filepath)
 
-            # Load audio for Whisper
-            transc_start = time.time()
-            audio = whisper.load_audio(vocals_filepath)
+        # Load Whisper model
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        whisper_model = whisper.load_model("medium", device=device)
 
-            # Load Whisper model
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            whisper_model = whisper.load_model("medium", device=device)
+        # Perform transcription
+        transcription_result = whisper.transcribe_timestamped(whisper_model, audio)
+        transc_end = time.time()
 
-            # Perform transcription
-            transcription_result = whisper.transcribe_timestamped(whisper_model, audio)
-            transc_end = time.time()
+        ###### Video rendering ######
+        """
+        # Debug inputs to avoid running the audio separation and transcription: comment after the try: until right above the video rendering
+        inst_filepath = "output/tmp/inst.wav"
+        vocals_filepath = "output/tmp/voc.wav"
+        with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
+            transcription_result = json.load(f)
+        """
 
-            ###### Video rendering ######
-            """
-            # Debug inputs to avoid running the audio separation and transcription: comment after the try: until right above the video rendering
-            inst_filepath = "output/tmp/inst.wav"
-            vocals_filepath = "output/tmp/voc.wav"
-            with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
-                transcription_result = json.load(f)
-            """
+        video_start = time.time()
 
-            video_start = time.time()
+        y, sr = librosa.load(inst_filepath)
+        audio_duration = librosa.get_duration(y=y, sr=sr)
+        
+        # Video properties
+        fps = 24
+        video_size = (1280, 720)  # HD resolution
 
-            y, sr = librosa.load(inst_filepath)
-            audio_duration = librosa.get_duration(y=y, sr=sr)
-            
-            # Video properties
-            fps = 24
-            video_size = (1280, 720)  # HD resolution
+        # Font name
+        font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
 
-            # Font name
-            font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
+        # Detected language
+        lang = transcription_result["language"]
+        is_latin = lang == "en" or lang == "es" or lang == "fr" or lang == "de" or lang == "it" or lang == "pt"
 
-            # Detected language
-            lang = transcription_result["language"]
-            is_latin = lang == "en" or lang == "es" or lang == "fr" or lang == "de" or lang == "it" or lang == "pt"
+        # Add text clips based on the segments
+        text_clips = []
+        last_end = 0
+        base_position = (100, video_size[1] // 2)
 
-            # Add text clips based on the segments
-            text_clips = []
-            last_end = 0
-            base_position = (100, video_size[1] // 2)
+        segments = transcription_result['segments']
 
-            segments = transcription_result['segments']
+        # Idea: adjust text to contain leading kanji of next text if they're meant to be read together
+        # For japanese songs, create furigana mapping for the entire text or replace the text with romaji, depending on user input
+        furigana_mapping = None
+        if lang == "ja":
+            if alphabet == "kanjitokana":
+                lyrics = transcription_result["text"]
+                furigana_mapping = get_furigana_mapping(lyrics)
+            else:
+                kks = pykakasi.kakasi()
+                for segment in segments:
+                    result = kks.convert(segment["text"])
+                    text_list = [item["hepburn"] for item in result]
+                    tr_text_without_spaces = "".join(text_list)
 
-            # Idea: adjust text to contain leading kanji of next text if they're meant to be read together
-            # For japanese songs, create furigana mapping for the entire text or replace the text with romaji, depending on user input
-            furigana_mapping = None
-            if lang == "ja":
-                if alphabet == "kanjitokana":
-                    lyrics = transcription_result["text"]
-                    furigana_mapping = get_furigana_mapping(lyrics)
-                else:
-                    kks = pykakasi.kakasi()
-                    for segment in segments:
-                        result = kks.convert(segment["text"])
-                        text_list = [item["hepburn"] for item in result]
-                        tr_text_without_spaces = "".join(text_list)
+                    acc_text = []
+                    acc_start = 0
+                    words = []
+                    for i, w in enumerate(segment["words"]):
+                        curr_word = ""
+                        for j, c in enumerate(w["text"]):
+                            acc_res = kks.convert("".join(acc_text) + c)
+                            curr_res = kks.convert(c)
+                            acc_romaji = acc_res[0]["hepburn"]
+                            curr_romaji = curr_res[0]["hepburn"]
 
-                        acc_text = []
-                        acc_start = 0
-                        words = []
-                        for i, w in enumerate(segment["words"]):
-                            curr_word = ""
-                            for j, c in enumerate(w["text"]):
-                                acc_res = kks.convert("".join(acc_text) + c)
-                                curr_res = kks.convert(c)
-                                acc_romaji = acc_res[0]["hepburn"]
-                                curr_romaji = curr_res[0]["hepburn"]
+                            already_appended = False
 
-                                already_appended = False
+                            if tr_text_without_spaces.startswith(acc_romaji):
+                                tr_text_without_spaces = tr_text_without_spaces[len(acc_romaji):]
 
-                                if tr_text_without_spaces.startswith(acc_romaji):
-                                    tr_text_without_spaces = tr_text_without_spaces[len(acc_romaji):]
-
-                                    if len(acc_text) > 0:
-                                        if 0x4E00 <= ord(c) <= 0x9FBF: # If word with multiple kanjis
-                                            words.append({
-                                                "start": acc_start,
-                                                "end": w["end"],
-                                                "text": acc_romaji,
-                                                "confidence": w["confidence"],
-                                            })
-
-                                            already_appended = True
-                                        else:
-                                            words.append({
-                                                "start": acc_start,
-                                                "end": w["start"],
-                                                "text": acc_romaji.split(curr_romaji)[0],
-                                                "confidence": w["confidence"],
-                                            })
-
-                                        acc_text = []
-                                    
-                                    if j == len(w["text"]) - 1 and not already_appended: # If last character of word and not already appended
+                                if len(acc_text) > 0:
+                                    if 0x4E00 <= ord(c) <= 0x9FBF: # If word with multiple kanjis
                                         words.append({
-                                            "start": w["start"],
+                                            "start": acc_start,
                                             "end": w["end"],
-                                            "text": curr_word + curr_romaji,
+                                            "text": acc_romaji,
                                             "confidence": w["confidence"],
                                         })
 
+                                        already_appended = True
                                     else:
-                                        curr_word += curr_romaji
+                                        words.append({
+                                            "start": acc_start,
+                                            "end": w["start"],
+                                            "text": acc_romaji.split(curr_romaji)[0],
+                                            "confidence": w["confidence"],
+                                        })
 
                                     acc_text = []
+                                
+                                if j == len(w["text"]) - 1 and not already_appended: # If last character of word and not already appended
+                                    words.append({
+                                        "start": w["start"],
+                                        "end": w["end"],
+                                        "text": curr_word + curr_romaji,
+                                        "confidence": w["confidence"],
+                                    })
+
                                 else:
-                                    if len(acc_text) == 0:
-                                        acc_start = w["start"]
-                                    acc_text.append(c)
+                                    curr_word += curr_romaji
 
-                        segment["text"] = "".join(text_list)
-                        segment["words"] = words
+                                acc_text = []
+                            else:
+                                if len(acc_text) == 0:
+                                    acc_start = w["start"]
+                                acc_text.append(c)
 
-                        # Using this method, single kanji read differently when paired with another kanji will be read differently.
-                        # Fix this by creating a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
+                    segment["text"] = "".join(text_list)
+                    segment["words"] = words
 
-            # Split big sentences in latin languages
-            if is_latin:
-                segments = split_text(segments, lang)
+                    # Using this method, single kanji read differently when paired with another kanji will be read differently.
+                    # Fix this by creating a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
 
-            for i, segment in enumerate(segments):
-                start = segment['start']
-                end = segment['end']
-                text = segment['text']
+        # Split big sentences in latin languages
+        if is_latin:
+            segments = split_text(segments, lang)
 
-                next_segment_exists = i < len(segments) - 1
-                next_segment = None
-                duration_before_next = 0
-                if next_segment_exists:
-                    next_segment = segments[i + 1]
-                    duration_before_next = next_segment['start'] - end
+        for i, segment in enumerate(segments):
+            start = segment['start']
+            end = segment['end']
+            text = segment['text']
 
-                furigana_use_count = 0
+            next_segment_exists = i < len(segments) - 1
+            next_segment = None
+            duration_before_next = 0
+            if next_segment_exists:
+                next_segment = segments[i + 1]
+                duration_before_next = next_segment['start'] - end
+
+            furigana_use_count = 0
+            
+            # Create progressive text clips
+            words = segment['words']
+            current_text = ""
+            x_offset = base_position[0]
+            y_position = base_position[1]
+            for j, word in enumerate(words):
+                word_start = word['start']
+                word_end = word['end']
+                next_text = word['text']
+                current_text += next_text + (" " if is_latin else "")
+                remaining_text = text[len(current_text):]
                 
-                # Create progressive text clips
-                words = segment['words']
-                current_text = ""
-                x_offset = base_position[0]
-                y_position = base_position[1]
-                for j, word in enumerate(words):
-                    word_start = word['start']
-                    word_end = word['end']
-                    next_text = word['text']
-                    current_text += next_text + (" " if is_latin else "")
-                    remaining_text = text[len(current_text):]
-                    
-                    # Calculate position based on character count
-                    blue_text_end = word_end if remaining_text else (next_segment['start'] if next_segment_exists and duration_before_next < 3 else end + 3)
-                    blue_array = create_text_clip(current_text, word_start, blue_text_end, color='blue', furigana=furigana_mapping, position=base_position)
-                    blue_text_clip = blue_array[0]
-                    blue_count = blue_array[1]
-                    text_clips.extend(blue_text_clip)
-                    furigana_use_count += blue_count
-                    
-                    current_text_width = blue_text_clip[0].size[0]
-                    x_offset = base_position[0] + current_text_width
-
-                    if remaining_text:
-                        black_array = create_text_clip(remaining_text, word_start, word_end, color='black', furigana=furigana_mapping, position=(x_offset, y_position))
-                        black_text_clip = black_array[0]
-                        black_count = black_array[1]
-                        text_clips.extend(black_text_clip)
-                        furigana_use_count += black_count
-
-                # Check for break longer than 5 seconds
-                if i == 0 or start - last_end > 5:
-                    fade_clip = TextClip(text, fontsize=70, color='black', font=font).set_start(start-1).set_end(start)
-                    fade_clip = fade_clip.crossfadein(start if start < 1 else 1).set_position((base_position[0], y_position))
-                    text_clips.append(fade_clip)
+                # Calculate position based on character count
+                blue_text_end = word_end if remaining_text else (next_segment['start'] if next_segment_exists and duration_before_next < 3 else end + 3)
+                blue_array = create_text_clip(current_text, word_start, blue_text_end, color='blue', furigana=furigana_mapping, position=base_position)
+                blue_text_clip = blue_array[0]
+                blue_count = blue_array[1]
+                text_clips.extend(blue_text_clip)
+                furigana_use_count += blue_count
                 
-                # Display next line of lyrics under current line if less than 5 seconds away
-                if next_segment_exists and duration_before_next < 5:
-                    next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=50, position=(base_position[0] + 80, y_position + 80))  # Adjusted position
-                    next_text_clip = next_array[0]
-                    text_clips.extend(next_text_clip)
+                current_text_width = blue_text_clip[0].size[0]
+                x_offset = base_position[0] + current_text_width
 
-                # Remove kanji encountered in current segment from the mapping
-                if lang == "ja" and alphabet == "kanjitokana" and furigana_mapping and furigana_use_count > 0:
-                    furigana_use_count /= len(words)
-                    furigana_use_count = round(furigana_use_count)
-                    furigana_mapping[0] = furigana_mapping[0][furigana_use_count:]
-                    furigana_mapping[1] = furigana_mapping[1][furigana_use_count:]
-                
-                last_end = end
+                if remaining_text:
+                    black_array = create_text_clip(remaining_text, word_start, word_end, color='black', furigana=furigana_mapping, position=(x_offset, y_position))
+                    black_text_clip = black_array[0]
+                    black_count = black_array[1]
+                    text_clips.extend(black_text_clip)
+                    furigana_use_count += black_count
 
-            # Combine text clips with the video
-            # Load audio file
-            audio = AudioFileClip(inst_filepath)
-            final_video = CompositeVideoClip(text_clips, size=video_size, bg_color=(255, 255, 255)).set_duration(audio_duration).set_audio(audio)
+            # Check for break longer than 5 seconds
+            if i == 0 or start - last_end > 5:
+                fade_clip = TextClip(text, fontsize=70, color='black', font=font).set_start(start-1).set_end(start)
+                fade_clip = fade_clip.crossfadein(start if start < 1 else 1).set_position((base_position[0], y_position))
+                text_clips.append(fade_clip)
+            
+            # Display next line of lyrics under current line if less than 5 seconds away
+            if next_segment_exists and duration_before_next < 5:
+                next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=50, position=(base_position[0] + 80, y_position + 80))  # Adjusted position
+                next_text_clip = next_array[0]
+                text_clips.extend(next_text_clip)
 
-            # Save the final video
-            video_filename = f"{base_filename}.mp4"
-            video_filepath = os.path.join(app.config['OUTPUT_FOLDER'], video_filename)
-            final_video.write_videofile(video_filepath, fps=fps)
+            # Remove kanji encountered in current segment from the mapping
+            if lang == "ja" and alphabet == "kanjitokana" and furigana_mapping and furigana_use_count > 0:
+                furigana_use_count /= len(words)
+                furigana_use_count = round(furigana_use_count)
+                furigana_mapping[0] = furigana_mapping[0][furigana_use_count:]
+                furigana_mapping[1] = furigana_mapping[1][furigana_use_count:]
+            
+            last_end = end
 
-            video_end = time.time()
+        # Combine text clips with the video
+        # Load audio file
+        audio = AudioFileClip(inst_filepath)
+        final_video = CompositeVideoClip(text_clips, size=video_size, bg_color=(255, 255, 255)).set_duration(audio_duration).set_audio(audio)
 
-            # Remove tmp files (vocals and instrumental)
-            os.remove(inst_filepath)
-            os.remove(vocals_filepath)
+        # Save the final video
+        video_filename = f"{base_filename}.mp4"
+        video_filepath = os.path.join(app.config['OUTPUT_FOLDER'], video_filename)
+        final_video.write_videofile(video_filepath, fps=fps)
 
-            # Upload the final video
-            return jsonify({
-                'message': 'File successfully processed.\nAudio separation time: {:.2f}s\nTranscription time: {:.2f}s\nVideo rendering time: {:.2f}s'.format(audio_end - audio_start, transc_end - transc_start, video_end - video_start),
-                'video_file': video_filepath
-            }), 200
+        video_end = time.time()
 
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        # Remove tmp files (vocals and instrumental)
+        os.remove(inst_filepath)
+        os.remove(vocals_filepath)
+
+        # Upload the final video
+        return jsonify({
+            'message': 'File successfully processed.\nAudio separation time: {:.2f}s\nTranscription time: {:.2f}s\nVideo rendering time: {:.2f}s'.format(audio_end - audio_start, transc_end - transc_start, video_end - video_start),
+            'video_file': video_filepath
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/upload', methods=['POST'])
+def main():
+
+    # URLS = ["https://youtu.be/BaW_jenozKc?si=DdQ2B1vV_FwNwYvQ"]
+
+    error = False
+    if not('file' not in request.files):
+        file = request.files['file']
+        if not(file.filename == ''):
+            if file and allowed_file(file.filename):
+                filepathname = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+                file.save(filepathname)
+
+                create_video(file.filename)
+            else:
+                error = True
+        else:
+            error = True
+    elif 'musicLink' in request.form:
+        musicLink = request.form.get('musicLink')
+        if is_youtube_link(musicLink):
+
+            filename = get_youtube_video_title(musicLink)
+            filename = filename.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_").replace("#", "_")
+            filepathname = app.config['UPLOAD_FOLDER'] + filename
+            filename = filename + ".mp3"
+
+            ydl_opts = {
+                'format': 'mp3/bestaudio/best',
+                'postprocessors': [{  # Extract audio using ffmpeg
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                }],
+                'outtmpl': filepathname,
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                error_code = ydl.download(musicLink)
+
+            create_video(filename)
+        else:
+            error = True
     else:
-        return jsonify({'error': 'Allowed file types are mp3 and wav'}), 400
+        error = True
+
+    if error:
+        return jsonify({'error': 'Error in music link or file in the request'}), 400
+    
+    return jsonify({'message': 'File successfully uploaded'}), 200
 
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
