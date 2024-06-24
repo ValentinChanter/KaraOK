@@ -5,6 +5,7 @@ import Image from "next/image"
 
 const Home = () => {
   const [file, setFile] = useState<File | null>(null);
+  const [musicLink, setMusicLink] = useState<string>('');
   const [modelFilename, setModelFilename] = useState<string>('UVR_MDXNET_KARA_2.onnx');
   const [message, setMessage] = useState<string>('');
   const [alphabet, setAlphabet] = useState<string>('kanjitokana');
@@ -17,13 +18,16 @@ const Home = () => {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!file) {
+    if (!file && musicLink.length === 0) {
       setMessage('Please select a file to upload.');
       return;
     }
 
     const formData = new FormData();
-    formData.append('file', file);
+    if (file) {
+      formData.append('file', file);
+    }
+    formData.append('musicLink', musicLink);
     formData.append('model_filename', modelFilename);
     formData.append('alphabet', alphabet);
 
@@ -56,7 +60,13 @@ const Home = () => {
             <form onSubmit={handleSubmit}>
               <div className='mx-4 shadow-md px-8 py-4 rounded-lg flex flex-row justify-between mb-2'>
                 <label className='text-lg font-semibold'>1. Choose an audio file</label>
-                <input className='w-1/2' type="file" onChange={handleFileChange} accept=".mp3" required />
+                <div className='flex flex-col'>
+                  <input className='w-1/2' type="file" onChange={handleFileChange} accept=".mp3" />
+                  <div className='flex flex-row'>
+                    <label className='text-sm mt-2 mr-1'>Link:</label>
+                    <input className='border border-black mt-1' type="text" value={musicLink} onChange={(e) => setMusicLink(e.target.value)} />
+                  </div>
+                </div>
               </div>
               <div className='mx-4 shadow-md px-8 py-4 rounded-lg flex flex-row justify-between mb-2'>
                 <label htmlFor="model" className='text-lg font-semibold'>2. Choose an instrumental</label>
@@ -80,7 +90,7 @@ const Home = () => {
               </div>
             </form>
             <div className='mx-4 mt-6 flex flex-row justify-center py-4'>
-              {message && <p>{message}</p>}
+              {message && <p className="text-sm">{message}</p>}
               (Ajouter un loader ici à la place de "Processing" pour montrer que ça charge ?)
             </div>
         </div>
