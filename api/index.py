@@ -115,7 +115,7 @@ def get_furigana_mapping(text):
     return [kanji_list, furigana_list]
 
 # Helper function to create text clips with furigana, also returns how many furigana translations were used
-def create_text_clip(text, start_time, end_time, color='black', fontsize=70, furigana=None, position=(0, 0), font='Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'):
+def create_text_clip(text, start_time, end_time, color='black', fontsize=60, furigana=None, position=(0, 0), font='Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'):
     text_clip = TextClip(text, fontsize=fontsize, color=color, font=font)
     text_clip = text_clip.set_start(start_time).set_end(end_time).set_position(position)
 
@@ -391,13 +391,13 @@ def create_video(filename):
 
             # Check for break longer than 5 seconds
             if i == 0 or start - last_end > 5:
-                fade_clip = TextClip(text, fontsize=70, color='black', font=font).set_start(start-1).set_end(start)
+                fade_clip = TextClip(text, fontsize=60, color='black', font=font).set_start(start-1).set_end(start)
                 fade_clip = fade_clip.crossfadein(start if start < 1 else 1).set_position((base_position[0], y_position))
                 text_clips.append(fade_clip)
             
             # Display next line of lyrics under current line if less than 5 seconds away
             if next_segment_exists and duration_before_next < 5:
-                next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=50, position=(base_position[0] + 80, y_position + 80))  # Adjusted position
+                next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=40, position=(base_position[0] + 80, y_position + 80))  # Adjusted position
                 next_text_clip = next_array[0]
                 text_clips.extend(next_text_clip)
 
