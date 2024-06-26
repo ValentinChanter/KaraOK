@@ -149,9 +149,13 @@ def split_text(segments, lang):
     i = 0
     for segment in segments:
         curr_words = [segment["words"][0]]
+        word_count = 0
+        j = 0
         for word in segment["words"][1:]:
             first_char = word["text"][0]
-            if lang != "en" and first_char.isupper() or lang == "en" and first_char.isupper() and first_char != "I":
+            word_count += 1
+            j += 1
+            if (lang != "en" and first_char.isupper() or lang == "en" and first_char.isupper() and first_char != "I") or (word_count > 4 and len(segment["words"][j:]) > 2):
                 new_segments.append({
                     "id": i,
                     "seek": segment["seek"],
@@ -166,6 +170,7 @@ def split_text(segments, lang):
                     "words": curr_words
                 })
                 curr_words = [word]
+                word_count = 1
                 i += 1
             else:
                 curr_words.append(word)
@@ -187,6 +192,7 @@ def split_text(segments, lang):
 
 # Main function to create the video
 def create_video(filename):
+
     alphabet = request.form.get('alphabet')
     
     base_filename = os.path.splitext(filename)[0]
