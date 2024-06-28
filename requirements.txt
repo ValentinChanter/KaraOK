@@ -8,3 +8,5 @@ moviepy
 requests
 yt-dlp
 opencv-python
+shazamio
+azlyrics
