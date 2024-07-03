@@ -10,3 +10,6 @@ yt-dlp
 opencv-python
 shazamio
 azlyrics
+jiwer
+cutlet
+unidic-lite
