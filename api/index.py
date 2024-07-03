@@ -13,6 +13,12 @@ import time
 import yt_dlp
 import json # For debug inputs
 
+import asyncio
+from shazamio import Shazam
+from lyricsgenius import Genius
+from jiwer import wer
+import cutlet
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -190,6 +196,45 @@ def split_text(segments, lang):
 
     return new_segments
 
+async def get_and_compare_lyrics(filename, hypothesis, lang):
+    shazam = Shazam()
+    song = await shazam.recognize(filename)
+    song_title = song.get("track", {}).get("title")
+    song_artist = song.get("track", {}).get("subtitle")
+
+    genius = Genius("asn_VTCc9Oa_Xz50SJC4zMg4W7w4uwpG9ZNxkvDgiGkKC_pz1muLiwPIHq2fshCa")
+    genius.verbose = False
+    genius.remove_section_headers = True
+    genius.skip_non_songs = False
+    genius.excluded_terms = ["(Remix)", "(Live)"]
+    song = genius.search_song(song_title, song_artist)
+    lyrics = song.lyrics
+    lyrics = lyrics.replace("You might also like", " ")
+    lyrics = lyrics.replace("5Embed", " ")
+    lyrics = '\n'.join(lyrics.split('\n')[1:])
+
+    lyrics = lyrics.replace("\n", " ").replace("?", " ").replace("!", " ").replace(".", " ").replace(",", " ").replace("(", " ").replace(")", " ").replace("[", " ").replace("]", " ").replace("{", " ").replace("}", " ").replace(":", " ").replace(";", " ").replace("-", " ").replace("—", " ")
+    lyrics = lyrics.lower()
+
+    hypothesis = hypothesis.replace("\n", " ").replace("?", " ").replace("!", " ").replace(".", " ").replace(",", " ").replace("(", " ").replace(")", " ").replace("[", " ").replace("]", " ").replace("{", " ").replace("}", " ").replace(":", " ").replace(";", " ").replace("-", " ").replace("—", " ")
+    hypothesis = hypothesis.lower()
+
+    try:
+        if lang == "ja":
+            katsu = cutlet.Cutlet()
+            lyrics = katsu.romaji(lyrics, False, False)
+            hypothesis = katsu.romaji(hypothesis, False, False)
+    except Exception as e:
+        print(f"Error in romaji conversion: {e}")
+
+    error = wer(lyrics, hypothesis)
+    print(f"WER: {error:.2f}")
+
+def compare_lyrics(filename, hypothesis, lang):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(get_and_compare_lyrics(filename, hypothesis, lang))
+
 # Main function to create the video
 def create_video(filename):
 
@@ -244,6 +289,8 @@ def create_video(filename):
         with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
             transcription_result = json.load(f)
         """
+
+        compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
 
         video_start = time.time()
 
