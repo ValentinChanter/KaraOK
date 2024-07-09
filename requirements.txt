@@ -7,8 +7,7 @@ pykakasi
 moviepy
 requests
 yt-dlp
-opencv-python
 shazamio
 jiwer
 cutlet
-unidic-lite
+lyricsgenius
