@@ -4,9 +4,11 @@ from audio_separator.separator import Separator
 from flask_cors import CORS
 import whisper_timestamped as whisper
 import torch
+import numpy as np
 import librosa
 import pykakasi
-from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip
+from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip, ColorClip, ImageSequenceClip
+from moviepy.video.tools.subtitles import SubtitlesClip
 import requests
 import re
 import time
@@ -235,9 +237,53 @@ def compare_lyrics(filename, hypothesis, lang):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(get_and_compare_lyrics(filename, hypothesis, lang))
 
+# Utility to create a dictionary for the blue rectangle movement
+def generate_blue_rectangle_movement_dict(old_x, new_x, start, end):
+    return {
+        "start": float(start),
+        "end": float(end),
+        "old_x": old_x,
+        "new_x": new_x
+    }
+
+def render_blue_rectangle(rect_dict_list, base_position, duration, fps, video_size, font_height=80):
+    frames = []
+    current_dict_index = 0
+    for i in range(int(duration * fps)):
+        start = rect_dict_list[current_dict_index]["start"]
+        end = rect_dict_list[current_dict_index]["end"]
+        old_x = rect_dict_list[current_dict_index]["old_x"]
+        new_x = rect_dict_list[current_dict_index]["new_x"]
+
+        curr_time = i / float(fps)
+
+        in_a_pause = False
+
+        if curr_time >= end and current_dict_index + 1 < len(rect_dict_list):
+            current_dict_index += 1
+
+        # If the frame is within the current segment, interpolate the x position between the old and new x
+        if start <= curr_time < end:
+            if in_a_pause:
+                in_a_pause = False
+
+            x = np.interp(curr_time, [start, end], [old_x, new_x])
+        # If the frame is between no start and end, set x to latest new_x
+        elif current_dict_index > 0 and curr_time < start:
+            x = rect_dict_list[current_dict_index - 1]["new_x"]
+        # If the frame is at the beginning of the video, set x to 0
+        else:
+            x = 0
+
+        # Fill the frame with the blue rectangle from x = 0 to x = the calculated position and y = base_position[1] to y = base_position[1] + font_height
+        frame = np.zeros((video_size[1], video_size[0], 3), dtype=np.uint8)
+        frame[base_position[1]:base_position[1] + font_height, :int(x)] = [0, 0, 255]
+        frames.append(frame)
+
+    return frames
+
 # Main function to create the video
 def create_video(filename):
-
     alphabet = request.form.get('alphabet')
     
     base_filename = os.path.splitext(filename)[0]
@@ -247,6 +293,7 @@ def create_video(filename):
     model_filename = request.form.get('model_filename')
 
     try:
+        """
         audio_start = time.time()
         # Perform audio separation
         separator = Separator(
@@ -284,13 +331,12 @@ def create_video(filename):
         ###### Video rendering ######
         """
         # Debug inputs to avoid running the audio separation and transcription: comment after the try: until right above the video rendering
-        inst_filepath = "output/tmp/inst.wav"
-        vocals_filepath = "output/tmp/voc.wav"
+        inst_filepath = "output/tmp/inst.mp3"
+        vocals_filepath = "output/tmp/voc.mp3"
         with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
             transcription_result = json.load(f)
-        """
 
-        compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
+        # compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
 
         video_start = time.time()
 
@@ -301,28 +347,28 @@ def create_video(filename):
         fps = 24
         video_size = (1280, 720)  # HD resolution
 
-        # Font name
-        font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
-
         # Detected language
         lang = transcription_result["language"]
         is_latin = lang == "en" or lang == "es" or lang == "fr" or lang == "de" or lang == "it" or lang == "pt"
 
+        # Font name (monospace)
+        font = 'Consolas'
+        if lang == "ja" and alphabet == "kanjitokana":
+            font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
+        font_size = 60 if lang == "ja" and alphabet == "kanjitokana" else 50
+        char_font_size = font_size if lang == "ja" and alphabet == "kanjitokana" else font_size * 34 / 60
+        font_height = 80
+
         # Add text clips based on the segments
         text_clips = []
         last_end = 0
-        base_position = (100, video_size[1] // 2)
+        left_margin = 100
+        base_position = (left_margin, video_size[1] // 2)
 
         segments = transcription_result['segments']
 
-        # Idea: adjust text to contain leading kanji of next text if they're meant to be read together
-        # For japanese songs, create furigana mapping for the entire text or replace the text with romaji, depending on user input
-        furigana_mapping = None
         if lang == "ja":
-            if alphabet == "kanjitokana":
-                lyrics = transcription_result["text"]
-                furigana_mapping = get_furigana_mapping(lyrics)
-            else:
+            if alphabet == "romaji":
                 kks = pykakasi.kakasi()
                 for segment in segments:
                     result = kks.convert(segment["text"])
@@ -386,16 +432,42 @@ def create_video(filename):
                     segment["words"] = words
 
                     # Using this method, single kanji read differently when paired with another kanji will be read differently.
-                    # Fix this by creating a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
+                    # Fix this by creat""ing a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
 
         # Split big sentences in latin languages
         if is_latin:
             segments = split_text(segments, lang)
 
+        #Format the transcription into a list like [((ta,tb),'some text'),...]
+        subs = []
+        for segment in segments:
+            start = segment['start']
+            end = segment['end']
+            text = segment['text']
+
+            subs.append(((start, end), text))
+
+            # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
+            if segment != segments[-1]:
+                next_start = segments[segments.index(segment) + 1]['start']
+                subs.append(((end, next_start), "[pause]"))
+            else:
+                subs.append(((end, audio_duration), "[pause]"))
+        
+        generator = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=2.5, size=(video_size[0], font_height), align='West', method='caption', bg_color='white')
+        subtitles = SubtitlesClip(subs, generator).to_mask()
+        blue_rectangle_x_pos = 0
+        blue_rectangle_dict_list = []
+
         for i, segment in enumerate(segments):
             start = segment['start']
             end = segment['end']
             text = segment['text']
+
+            # Set blue rectangle back to the left at the beginning of each segment
+            reset_pos = generate_blue_rectangle_movement_dict(blue_rectangle_x_pos, base_position[0], start, start + 0.1)
+            blue_rectangle_dict_list.append(reset_pos)
+            blue_rect_x_pos = base_position[0]
 
             next_segment_exists = i < len(segments) - 1
             next_segment = None
@@ -404,63 +476,61 @@ def create_video(filename):
                 next_segment = segments[i + 1]
                 duration_before_next = next_segment['start'] - end
 
-            furigana_use_count = 0
+            # Change end to start of next segment if it's too close, otherwise add 3 seconds
+            if next_segment_exists and duration_before_next < 3:
+                end = next_segment['start']
+            else:
+                end += 3
             
-            # Create progressive text clips
+            # Create text clip
+            #text_clip = generator(text).set_start(start).set_end(end).set_position(base_position)
+
+            # Calculate blue rectangle position
             words = segment['words']
-            current_text = ""
-            x_offset = base_position[0]
-            y_position = base_position[1]
             for j, word in enumerate(words):
                 word_start = word['start']
                 word_end = word['end']
-                next_text = word['text']
-                current_text += next_text + (" " if is_latin else "")
-                remaining_text = text[len(current_text):]
+                word_length = len(word['text'])
                 
-                # Calculate position based on character count
-                blue_text_end = word_end if remaining_text else (next_segment['start'] if next_segment_exists and duration_before_next < 3 else end + 3)
-                blue_array = create_text_clip(current_text, word_start, blue_text_end, color='blue', furigana=furigana_mapping, position=base_position)
-                blue_text_clip = blue_array[0]
-                blue_count = blue_array[1]
-                text_clips.extend(blue_text_clip)
-                furigana_use_count += blue_count
-                
-                current_text_width = blue_text_clip[0].size[0]
-                x_offset = base_position[0] + current_text_width
-
-                if remaining_text:
-                    black_array = create_text_clip(remaining_text, word_start, word_end, color='black', furigana=furigana_mapping, position=(x_offset, y_position))
-                    black_text_clip = black_array[0]
-                    black_count = black_array[1]
-                    text_clips.extend(black_text_clip)
-                    furigana_use_count += black_count
+                new_pos = generate_blue_rectangle_movement_dict(blue_rect_x_pos, blue_rect_x_pos + word_length * char_font_size, word_start, word_end)
+                blue_rectangle_dict_list.append(new_pos)
+                blue_rect_x_pos += word_length * char_font_size
 
             # Check for break longer than 5 seconds
-            if i == 0 or start - last_end > 5:
-                fade_clip = TextClip(text, fontsize=60, color='black', font=font).set_start(start-1).set_end(start)
-                fade_clip = fade_clip.crossfadein(start if start < 1 else 1).set_position((base_position[0], y_position))
-                text_clips.append(fade_clip)
+            #if i == 0 or start - last_end > 5:
+            #    text_clip = text_clip.crossfadein(start if start < 1 else 1)
             
+            #text_clips.append(text_clip)
+            
+            """
             # Display next line of lyrics under current line if less than 5 seconds away
             if next_segment_exists and duration_before_next < 5:
-                next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=40, position=(base_position[0] + 80, y_position + 80))  # Adjusted position
+                next_array = create_text_clip(next_segment['text'], start, next_segment['start'], fontsize=40, position=(base_position[0] + font_height, y_position + font_height))  # Adjusted position
                 next_text_clip = next_array[0]
                 text_clips.extend(next_text_clip)
-
-            # Remove kanji encountered in current segment from the mapping
-            if lang == "ja" and alphabet == "kanjitokana" and furigana_mapping and furigana_use_count > 0:
-                furigana_use_count /= len(words)
-                furigana_use_count = round(furigana_use_count)
-                furigana_mapping[0] = furigana_mapping[0][furigana_use_count:]
-                furigana_mapping[1] = furigana_mapping[1][furigana_use_count:]
+            """
             
             last_end = end
 
-        # Combine text clips with the video
+        # Combine clips
+        black_background = ColorClip(video_size, color=(0, 0, 0)).set_duration(audio_duration)
+
+        # Render blue rectangle
+        blue_rect_frames = render_blue_rectangle(blue_rectangle_dict_list, base_position, audio_duration, fps, video_size, font_height)
+        blue_rect = ImageSequenceClip(blue_rect_frames, fps=fps)
+
+        # Apply mask to white rectangle
+        white_rect = ColorClip(video_size, color=(255, 255, 255)).set_duration(audio_duration)
+        white_rect_with_subs = white_rect.set_mask(subtitles).set_position(base_position)
+
+        # Draw white rectangles to mask the blue rectangle
+        top_white_rect = ColorClip((video_size[0], video_size[1] // 2), color=(255, 255, 255)).set_duration(audio_duration)
+        left_white_rect = ColorClip((left_margin, font_height), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2))
+        bottom_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 + font_height))
+
         # Load audio file
         audio = AudioFileClip(inst_filepath)
-        final_video = CompositeVideoClip(text_clips, size=video_size, bg_color=(255, 255, 255)).set_duration(audio_duration).set_audio(audio)
+        final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, top_white_rect, left_white_rect, bottom_white_rect], size=video_size).set_duration(audio_duration).set_audio(audio)
 
         # Save the final video
         video_filename = f"{base_filename}.mp4"
@@ -470,12 +540,12 @@ def create_video(filename):
         video_end = time.time()
 
         # Remove tmp files (vocals and instrumental)
-        os.remove(inst_filepath)
-        os.remove(vocals_filepath)
+        # os.remove(inst_filepath)
+        # os.remove(vocals_filepath)
 
         # Upload the final video
         return jsonify({
-            'message': 'File successfully processed.\nAudio separation time: {:.2f}s\nTranscription time: {:.2f}s\nVideo rendering time: {:.2f}s'.format(audio_end - audio_start, transc_end - transc_start, video_end - video_start),
+            'message': 'File successfully processed.\nAudio separation time: {:.2f}s\nTranscription time: {:.2f}s\nVideo rendering time: {:.2f}s'.format(0, 0, video_end - video_start),
             'video_file': video_filepath
         }), 200
 
@@ -485,16 +555,15 @@ def create_video(filename):
 
 @app.route('/api/upload', methods=['POST'])
 def main():
-
     error = False
-    if not('file' not in request.files):
+    if 'file' in request.files:
         file = request.files['file']
         if not(file.filename == ''):
             if file and allowed_file(file.filename):
                 filepathname = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
                 file.save(filepathname)
 
-                create_video(file.filename)
+                return create_video(file.filename)
             else:
                 error = True
         else:
@@ -520,7 +589,7 @@ def main():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 error_code = ydl.download(musicLink)
 
-            create_video(filename)
+            return create_video(filename)
         else:
             error = True
     else:
@@ -528,8 +597,6 @@ def main():
 
     if error:
         return jsonify({'error': 'Error in music link or file in the request'}), 400
-    
-    return jsonify({'message': 'File successfully uploaded'}), 200
 
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
