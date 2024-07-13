@@ -456,8 +456,6 @@ def create_video(filename):
             text = segment['text']
 
             # Set blue rectangle back to the left at the beginning of each segment
-            reset_pos = generate_blue_rectangle_movement_dict(blue_rectangle_x_pos, base_position[0], start, start + 0.1)
-            blue_rectangle_dict_list.append(reset_pos)
             blue_rect_x_pos = base_position[0]
 
             next_segment_exists = i < len(segments) - 1
@@ -472,9 +470,6 @@ def create_video(filename):
                 end = next_segment['start']
             else:
                 end += 3
-            
-            # Create text clip
-            #text_clip = generator(text).set_start(start).set_end(end).set_position(base_position)
 
             # Calculate blue rectangle position
             words = segment['words']
@@ -528,6 +523,10 @@ def create_video(filename):
             
             last_end = end
 
+        # Create the subtitles
+        subs_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=2.5, size=(video_size[0] - base_position[0], font_height), align='West', method='caption', bg_color='white')
+        subtitles = SubtitlesClip(subs, subs_generator).to_mask()
+
         # Create the next subtitles
         next_subs = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color='black', stroke_width=2.5, size=(video_size[0] - base_position[0] + font_height, font_height), align='West', method='caption', bg_color='white')
         next_subtitles = SubtitlesClip(next_line, next_subs).set_position((base_position[0] + font_height, base_position[1] + 80))
@@ -555,7 +554,7 @@ def create_video(filename):
 
         # Load audio file
         audio = AudioFileClip(inst_filepath)
-        final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, top_white_rect, left_white_rect, bottom_white_rect], size=video_size).set_duration(audio_duration).set_audio(audio)
+        final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
 
         # Save the final video
         video_filename = f"{base_filename}.mp4"
