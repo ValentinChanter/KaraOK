@@ -8,6 +8,7 @@ const Home = () => {
   const [musicLink, setMusicLink] = useState<string>('');
   const [modelFilename, setModelFilename] = useState<string>('UVR_MDXNET_KARA_2.onnx');
   const [message, setMessage] = useState<string>('');
+  const [processing, setProcessing] = useState<boolean>(false);
   const [alphabet, setAlphabet] = useState<string>('kanjitokana');
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -32,6 +33,7 @@ const Home = () => {
     formData.append('alphabet', alphabet);
 
     try {
+      setProcessing(true);
       setMessage('Processing...');
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -92,13 +94,13 @@ const Home = () => {
                     <option value="romaji">Rōmaji</option>
                 </select>
               </div>
-              <div className='mx-4 mt-6 flex flex-row justify-center py-4'>
-                <button type="submit">OK! (en vrai mettre le OK qui s'anime ici non ?)</button>
+              <div className='mx-4 mt-6 flex flex-row justify-center bg-[#ffdc5e] rounded-full shadow-lg'>
+                <button className='text-white w-full h-full py-4 text-3xl font-bold' disabled={processing}>OK!</button>
               </div>
             </form>
             <div className='mx-4 mt-6 flex flex-row justify-center py-4'>
               {message && <p className="text-sm">{message}</p>}
-              (Ajouter un loader ici à la place de "Processing" pour montrer que ça charge ?)
+
             </div>
         </div>
       
