@@ -93,32 +93,11 @@ def get_furigana_mapping(text):
         kata = item['kana']
         hira = item['hira']
         if orig != hira and orig != kata:
-            kanji_count = 0
-            for c in orig:
-                if 0x4E00 <= ord(c) <= 0x9FBF:
-                    kanji_count += 1
-
-            if kanji_count == 1:
-                while orig[-1] == hira[-1]:
-                    orig = orig[:-1]
-                    hira = hira[:-1]
-                kanji_list.append(orig)
-                furigana_list.append(hira)
-
-                continue
-            
-            res_map = get_furigana_from_jisho(orig)
-
-            if len(res_map[1]) == 0:
-                # Fallback method if jisho.org is not available (less accurate)
-                while orig[-1] == hira[-1]:
-                    orig = orig[:-1]
-                    hira = hira[:-1]
-                kanji_list.append(orig)
-                furigana_list.append(hira)
-            else:
-                kanji_list.extend(res_map[0])
-                furigana_list.extend(res_map[1])
+            while orig[-1] == hira[-1]:
+                orig = orig[:-1]
+                hira = hira[:-1]
+            kanji_list.append(orig)
+            furigana_list.append(hira)
 
     return [kanji_list, furigana_list]
 
@@ -358,16 +337,21 @@ def create_video(filename):
         font_size = 60 if lang == "ja" and alphabet == "kanjitokana" else 50
         char_font_size = font_size if lang == "ja" and alphabet == "kanjitokana" else font_size * 34 / 60
         font_height = 80
+        spaces_between_kana = 3
 
         # Add text clips based on the segments
         text_clips = []
         last_end = 0
         left_margin = 100
         base_position = (left_margin, video_size[1] // 2)
+        kanji_list = []
+        furigana_list = []
 
         segments = transcription_result['segments']
 
         if lang == "ja":
+            if alphabet == "kanjitokana":
+                kanji_list, furigana_list = get_furigana_mapping(transcription_result["text"])
             if alphabet == "romaji":
                 kks = pykakasi.kakasi()
                 for segment in segments:
@@ -440,7 +424,7 @@ def create_video(filename):
 
         #Format the transcription into a list like [((ta,tb),'some text'),...]
         subs = [((0, segments[0]['start']), "[pause]")]
-        for segment in segments:
+        furiganas = [((0, segments[0]['start']), "[pause]")]
             start = segment['start']
             end = segment['end']
             text = segment['text']
@@ -450,17 +434,10 @@ def create_video(filename):
             
             
             # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
-            if segment != segments[-1]:
-                next_start = segments[segments.index(segment) + 1]['start']
-                subs.append(((end, next_start), "[pause]"))
-            else:
-                subs.append(((end, audio_duration), "[pause]"))
-        
-        generator = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=2.5, size=(video_size[0], font_height), align='West', method='caption', bg_color='white')
-        subtitles = SubtitlesClip(subs, generator).to_mask()
-        blue_rectangle_x_pos = 0
+            furiganas.append(((corrected_end, next_start), "[pause]"))
         blue_rectangle_dict_list = []
-
+        mapping_index = 0
+        # For every line, calculate blue rectangle position and populate furiganas
         for i, segment in enumerate(segments):
             start = segment['start']
             end = segment['end']
@@ -498,11 +475,36 @@ def create_video(filename):
                 blue_rectangle_dict_list.append(new_pos)
                 blue_rect_x_pos += word_length * char_font_size
 
-            # Check for break longer than 5 seconds
-            #if i == 0 or start - last_end > 5:
-            #    text_clip = text_clip.crossfadein(start if start < 1 else 1)
-            
-            #text_clips.append(text_clip)
+            # Add furiganas to list if there are in current line of lyrics
+            if lang == "ja" and alphabet == "kanjitokana":
+                line_furiganas = ""
+                spaces_to_remove = 0
+                chars_to_skip = 0
+                for i, char in enumerate(text):
+                    if chars_to_skip == 0 and 0x4E00 <= ord(char) <= 0x9FBF:
+                        line_furiganas += furigana_list[mapping_index]
+
+                        chars_to_skip = len(kanji_list[mapping_index]) - 1
+                        spaces_to_remove += len(furigana_list[mapping_index]) - 2
+
+                        if spaces_to_remove < 0:
+                            for _ in range(- spaces_to_remove):
+                                line_furiganas += " " * spaces_between_kana
+
+                        mapping_index += 1
+                    else:
+                        if chars_to_skip > 0:
+                            chars_to_skip -= 1
+
+                        spaces_to_add = 2 - spaces_to_remove
+                        if spaces_to_add > 0:
+                            line_furiganas += " " * (spaces_between_kana * spaces_to_add)
+                            if spaces_to_remove > 0:
+                                spaces_to_remove = 0
+                        elif spaces_to_remove > 2:
+                            spaces_to_remove -= 2
+
+                furiganas.append(((start, end), line_furiganas))
             
             """
             # Display next line of lyrics under current line if less than 5 seconds away
@@ -514,7 +516,8 @@ def create_video(filename):
             
             last_end = end
 
-        # Combine clips
+        furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
+        furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
         black_background = ColorClip(video_size, color=(0, 0, 0)).set_duration(audio_duration)
 
         # Render blue rectangle
@@ -524,6 +527,7 @@ def create_video(filename):
         # Apply mask to white rectangle
         white_rect = ColorClip(video_size, color=(255, 255, 255)).set_duration(audio_duration)
         white_rect_with_subs = white_rect.set_mask(subtitles).set_position(base_position)
+        white_rect_with_furigana = white_rect.set_mask(furigana_subtitles).set_position((base_position[0], base_position[1] - font_height // 2))
 
         # Draw white rectangles to mask the blue rectangle
         top_white_rect = ColorClip((video_size[0], video_size[1] // 2), color=(255, 255, 255)).set_duration(audio_duration)
