@@ -233,30 +233,26 @@ def render_blue_rectangle(rect_dict_list, base_position, duration, fps, video_si
         end = rect_dict_list[current_dict_index]["end"]
         old_x = rect_dict_list[current_dict_index]["old_x"]
         new_x = rect_dict_list[current_dict_index]["new_x"]
+        is_last = current_dict_index == len(rect_dict_list) - 1
 
         curr_time = i / float(fps)
 
-        in_a_pause = False
-
-        if curr_time >= end and current_dict_index + 1 < len(rect_dict_list):
+        if curr_time >= end and not is_last:
             current_dict_index += 1
 
         # If the frame is within the current segment, interpolate the x position between the old and new x
-        if start <= curr_time < end:
-            if in_a_pause:
-                in_a_pause = False
-
+        if start <= curr_time <= end:
             x = np.interp(curr_time, [start, end], [old_x, new_x])
-        # If the frame is between no start and end, set x to latest new_x
-        elif current_dict_index > 0 and curr_time < start:
-            x = rect_dict_list[current_dict_index - 1]["new_x"]
+        # If the frame is between a start and end, set x to latest new_x
+        elif current_dict_index > 0:
+            x = rect_dict_list[current_dict_index - (0 if is_last else 1)]["new_x"]
         # If the frame is at the beginning of the video, set x to 0
         else:
             x = 0
 
-        # Fill the frame with the blue rectangle from x = 0 to x = the calculated position and y = base_position[1] to y = base_position[1] + font_height
+        # Fill the frame with the blue rectangle from x = base_pos[0] to x = the calculated position and y = base_position[1] to y = base_position[1] + font_height
         frame = np.zeros((video_size[1], video_size[0], 3), dtype=np.uint8)
-        frame[base_position[1]:base_position[1] + font_height, :int(x)] = [0, 0, 255]
+        frame[base_position[1] - font_height // 2:base_position[1] + font_height, base_position[0]:int(x)] = [0, 0, 255]
         frames.append(frame)
 
     return frames
@@ -435,6 +431,7 @@ def create_video(filename):
             
             # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
             furiganas.append(((corrected_end, next_start), "[pause]"))
+        blue_rect_x_pos = 0
         blue_rectangle_dict_list = []
         mapping_index = 0
         # For every line, calculate blue rectangle position and populate furiganas
@@ -518,6 +515,8 @@ def create_video(filename):
 
         furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
         furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
+
+        # Black background displayed behind the blue rectangle
         black_background = ColorClip(video_size, color=(0, 0, 0)).set_duration(audio_duration)
 
         # Render blue rectangle
