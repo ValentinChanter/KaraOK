@@ -43,11 +43,14 @@ const Home = () => {
       const result = await response.json();
       if (response.ok) {
         setMessage(`Success: ${result.message}`);
+        setProcessing(false);
       } else {
         setMessage(`Error: ${result.error}`);
+        setProcessing(false);
       }
     } catch (error) {
       setMessage('Error uploading file.');
+      setProcessing(false);
     }
   };
 
