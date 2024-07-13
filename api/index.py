@@ -307,6 +307,10 @@ def create_video(filename):
         # Debug inputs to avoid running the audio separation and transcription: comment after the try: until right above the video rendering
         inst_filepath = "output/tmp/inst.mp3"
         vocals_filepath = "output/tmp/voc.mp3"
+        transc_start = 0
+        transc_end = 0
+        audio_start = 0
+        audio_end = 0
         with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
             transcription_result = json.load(f)
             """
