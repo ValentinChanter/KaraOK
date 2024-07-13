@@ -293,7 +293,6 @@ def create_video(filename):
     model_filename = request.form.get('model_filename')
 
     try:
-        """
         audio_start = time.time()
         # Perform audio separation
         separator = Separator(
@@ -335,6 +334,7 @@ def create_video(filename):
         vocals_filepath = "output/tmp/voc.mp3"
         with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
             transcription_result = json.load(f)
+            """
 
         # compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
 
@@ -439,7 +439,7 @@ def create_video(filename):
             segments = split_text(segments, lang)
 
         #Format the transcription into a list like [((ta,tb),'some text'),...]
-        subs = []
+        subs = [((0, segments[0]['start']), "[pause]")]
         for segment in segments:
             start = segment['start']
             end = segment['end']
@@ -447,6 +447,8 @@ def create_video(filename):
 
             subs.append(((start, end), text))
 
+            
+            
             # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
             if segment != segments[-1]:
                 next_start = segments[segments.index(segment) + 1]['start']
@@ -545,7 +547,7 @@ def create_video(filename):
 
         # Upload the final video
         return jsonify({
-            'message': 'File successfully processed.\nAudio separation time: {:.2f}s\nTranscription time: {:.2f}s\nVideo rendering time: {:.2f}s'.format(0, 0, video_end - video_start),
+            'message': 'File successfully processed.\nAudio separation time: {:.2f}s\nTranscription time: {:.2f}s\nVideo rendering time: {:.2f}s'.format(audio_end - audio_start, transc_end - transc_start, video_end - video_start),
             'video_file': video_filepath
         }), 200
 
