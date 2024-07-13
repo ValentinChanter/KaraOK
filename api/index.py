@@ -313,7 +313,7 @@ def create_video(filename):
         audio_end = 0
         with open("output/tmp/audio.json", "r", encoding="utf-8") as f:
             transcription_result = json.load(f)
-            """
+        """
 
         # compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
 
