@@ -425,16 +425,27 @@ def create_video(filename):
         #Format the transcription into a list like [((ta,tb),'some text'),...]
         subs = [((0, segments[0]['start']), "[pause]")]
         furiganas = [((0, segments[0]['start']), "[pause]")]
+        next_line = []
+        for i, segment in enumerate(segments):
             start = segment['start']
             end = segment['end']
             text = segment['text']
+            prev_start = 0
+            prev_end = 0
+            next_start = segments[segments.index(segment) + 1]['start'] if segment != segments[-1] else audio_duration
+            corrected_end = end + 3 if next_start - end >= 3 else next_start
 
-            subs.append(((start, end), text))
+            subs.append(((start, corrected_end), text))
 
-            
+            if i > 0:
+                prev_start = segments[i - 1]['start']
+                prev_end = segments[i - 1]['end']
+                next_line.append(((prev_start, start if start - prev_end < 5 else prev_end + 5), text))
             
             # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
+            subs.append(((corrected_end, next_start), "[pause]"))
             furiganas.append(((corrected_end, next_start), "[pause]"))
+        
         blue_rect_x_pos = 0
         blue_rectangle_dict_list = []
         mapping_index = 0
@@ -517,6 +528,11 @@ def create_video(filename):
             
             last_end = end
 
+        # Create the next subtitles
+        next_subs = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color='black', stroke_width=2.5, size=(video_size[0] - base_position[0] + font_height, font_height), align='West', method='caption', bg_color='white')
+        next_subtitles = SubtitlesClip(next_line, next_subs).set_position((base_position[0] + font_height, base_position[1] + 80))
+
+        # Create the furigana subtitles
         furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
         furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
 
@@ -533,8 +549,8 @@ def create_video(filename):
         white_rect_with_furigana = white_rect.set_mask(furigana_subtitles).set_position((base_position[0], base_position[1] - font_height // 2))
 
         # Draw white rectangles to mask the blue rectangle
-        top_white_rect = ColorClip((video_size[0], video_size[1] // 2), color=(255, 255, 255)).set_duration(audio_duration)
-        left_white_rect = ColorClip((left_margin, font_height), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2))
+        top_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height // 2), color=(255, 255, 255)).set_duration(audio_duration)
+        left_white_rect = ColorClip((left_margin, font_height + font_height // 2), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 - font_height // 2))
         bottom_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 + font_height))
 
         # Load audio file
