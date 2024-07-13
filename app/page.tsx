@@ -61,10 +61,17 @@ const Home = () => {
               <div className='mx-4 shadow-md px-8 py-4 rounded-lg flex flex-row justify-between mb-2'>
                 <label className='text-lg font-semibold'>1. Choose an audio file</label>
                 <div className='flex flex-col'>
-                  <input className='w-1/2' type="file" onChange={handleFileChange} accept=".mp3" />
+                  <input type="file" onChange={handleFileChange} accept=".mp3" />
+                  <div className='relative flex py-1 items-center'>
+                    <div className='flex-grow border-t border-gray-400'></div>
+                    <span className='flex-shrink mx-4 text-gray-400'>or</span>
+                    <div className='flex-grow border-t border-gray-400'></div>
+                  </div>
                   <div className='flex flex-row'>
-                    <label className='text-sm mt-2 mr-1'>Link:</label>
-                    <input className='border border-black mt-1' type="text" value={musicLink} onChange={(e) => setMusicLink(e.target.value)} />
+                    <div className='mr-2 flex flex-col justify-center'>
+                      <label className='text-sm'>Link:</label>
+                    </div>
+                    <input className='border rounded-md bg-slate-100 px-2 py-1' type="text" value={musicLink} onChange={(e) => setMusicLink(e.target.value)} />
                   </div>
                 </div>
               </div>
