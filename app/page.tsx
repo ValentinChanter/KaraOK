@@ -10,6 +10,7 @@ const Home = () => {
   const [message, setMessage] = useState<string>('');
   const [processing, setProcessing] = useState<boolean>(false);
   const [alphabet, setAlphabet] = useState<string>('kanjitokana');
+  const [translation, setTranslation] = useState<string>('null');
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -31,6 +32,7 @@ const Home = () => {
     formData.append('musicLink', musicLink);
     formData.append('model_filename', modelFilename);
     formData.append('alphabet', alphabet);
+    formData.append('translation', translation);
 
     try {
       setProcessing(true);
@@ -95,6 +97,19 @@ const Home = () => {
                 <select className="p-2 rounded-md bg-slate-100 w-1/2" name="alphabet" id="alphabet" value={alphabet} onChange={(e) => setAlphabet(e.target.value)}>
                     <option value="kanjitokana">Kanji and kana</option>
                     <option value="romaji">Rōmaji</option>
+                </select>
+              </div>
+              <div className='mx-4 shadow-md px-8 py-4 rounded-lg flex flex-row justify-between mb-2'>
+                <div className='flex flex-col'>
+                  <label htmlFor="translation" className='text-lg font-semibold'>4. Choose a translation</label>
+                  <p>(optional)</p>
+                </div>
+                <select className="p-2 rounded-md bg-slate-100 w-1/2" name="translation" id="translation" value={translation} onChange={(e) => setTranslation(e.target.value)}>
+                    <option value="null">No translation</option>
+                    <option value="en">English</option>
+                    <option value="ja">Japanese</option>
+                    <option value="fr">French</option>
+                    <option value="es">Spanish</option>
                 </select>
               </div>
               <div className='mx-4 mt-6 flex flex-row justify-center bg-[#ffdc5e] rounded-full shadow-lg'>
