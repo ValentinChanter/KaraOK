@@ -105,7 +105,7 @@ def get_furigana_mapping(text):
     return [kanji_list, furigana_list]
 
 # Helper function to create text clips with furigana, also returns how many furigana translations were used
-def create_text_clip(text, start_time, end_time, color='black', fontsize=60, furigana=None, position=(0, 0), font='MS-Gothic-&-MS-UI-Gothic-&-MS-PGothic'):
+def create_text_clip(text, start_time, end_time, color='black', fontsize=60, furigana=None, position=(0, 0), font='Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'):
     text_clip = TextClip(text, fontsize=fontsize, color=color, font=font)
     text_clip = text_clip.set_start(start_time).set_end(end_time).set_position(position)
 
@@ -337,9 +337,9 @@ def create_video(filename):
 
         # Font name (monospace)
         font = 'Consolas'
-        font_translated = 'MS-Gothic-&-MS-UI-Gothic-&-MS-PGothic'
+        font_translated = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
         if lang == "ja" and alphabet == "kanjitokana":
-            font = 'MS-Gothic-&-MS-UI-Gothic-&-MS-PGothic'
+            font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
         font_size = 60 if lang == "ja" and alphabet == "kanjitokana" else 50
         font_size_translated = 40
         char_font_size = font_size if lang == "ja" and alphabet == "kanjitokana" else font_size * 34 / 60
