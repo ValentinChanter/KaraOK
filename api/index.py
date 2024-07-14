@@ -15,11 +15,14 @@ import time
 import yt_dlp
 import json # For debug inputs
 
+# Libraries WER calculation
 import asyncio
 from shazamio import Shazam
 from lyricsgenius import Genius
 from jiwer import wer
 import cutlet
+
+from googletrans import Translator
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
@@ -102,7 +105,7 @@ def get_furigana_mapping(text):
     return [kanji_list, furigana_list]
 
 # Helper function to create text clips with furigana, also returns how many furigana translations were used
-def create_text_clip(text, start_time, end_time, color='black', fontsize=60, furigana=None, position=(0, 0), font='Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'):
+def create_text_clip(text, start_time, end_time, color='black', fontsize=60, furigana=None, position=(0, 0), font='MS-Gothic-&-MS-UI-Gothic-&-MS-PGothic'):
     text_clip = TextClip(text, fontsize=fontsize, color=color, font=font)
     text_clip = text_clip.set_start(start_time).set_end(end_time).set_position(position)
 
@@ -260,6 +263,7 @@ def render_blue_rectangle(rect_dict_list, base_position, duration, fps, video_si
 # Main function to create the video
 def create_video(filename):
     alphabet = request.form.get('alphabet')
+    translation_lang = request.form.get('translation')
     
     base_filename = os.path.splitext(filename)[0]
     filename = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -315,6 +319,7 @@ def create_video(filename):
             transcription_result = json.load(f)
         """
 
+        # WER calculation (optional)
         # compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
 
         video_start = time.time()
@@ -332,9 +337,11 @@ def create_video(filename):
 
         # Font name (monospace)
         font = 'Consolas'
+        font_translated = 'MS-Gothic-&-MS-UI-Gothic-&-MS-PGothic'
         if lang == "ja" and alphabet == "kanjitokana":
-            font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
+            font = 'MS-Gothic-&-MS-UI-Gothic-&-MS-PGothic'
         font_size = 60 if lang == "ja" and alphabet == "kanjitokana" else 50
+        font_size_translated = 40
         char_font_size = font_size if lang == "ja" and alphabet == "kanjitokana" else font_size * 34 / 60
         font_height = 80
         spaces_between_kana = 3
@@ -426,6 +433,13 @@ def create_video(filename):
         subs = [((0, segments[0]['start']), "[pause]")]
         furiganas = [((0, segments[0]['start']), "[pause]")]
         next_line = []
+
+        doTranslation = translation_lang != "null" and translation_lang != lang
+        translatedSubs = []
+        if(doTranslation):
+            translatedSubs.append(((0, segments[0]['start']), "[pause]"))
+        translator = Translator()
+
         for i, segment in enumerate(segments):
             start = segment['start']
             end = segment['end']
@@ -436,6 +450,9 @@ def create_video(filename):
             corrected_end = end + 3 if next_start - end >= 3 else next_start
 
             subs.append(((start, corrected_end), text))
+
+            if doTranslation:
+                translatedSubs.append(((start, corrected_end), translator.translate(text, dest=translation_lang).text))
 
             if i > 0:
                 prev_start = segments[i - 1]['start']
@@ -531,6 +548,12 @@ def create_video(filename):
         next_subs = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color='black', stroke_width=2.5, size=(video_size[0] - base_position[0] + font_height, font_height), align='West', method='caption', bg_color='white')
         next_subtitles = SubtitlesClip(next_line, next_subs).set_position((base_position[0] + font_height, base_position[1] + 80))
 
+        # Create translated subtitles
+        translated_subtitles = None
+        if doTranslation:
+            translated_subs_generator = lambda txt: TextClip(txt, font=font_translated, fontsize=font_size_translated, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.5, align='West', method='label', bg_color='white')
+            translated_subtitles = SubtitlesClip(translatedSubs, translated_subs_generator).set_position(("center", "top"))
+
         # Create the furigana subtitles
         furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
         furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
@@ -554,7 +577,10 @@ def create_video(filename):
 
         # Load audio file
         audio = AudioFileClip(inst_filepath)
-        final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
+        if translated_subtitles != None:
+            final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles, translated_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
+        else:
+            final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
 
         # Save the final video
         video_filename = f"{base_filename}.mp4"
