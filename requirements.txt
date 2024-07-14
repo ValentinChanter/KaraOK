@@ -11,3 +11,4 @@ shazamio
 jiwer
 cutlet
 lyricsgenius
+googletrans==3.1.0a0
