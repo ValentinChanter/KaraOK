@@ -200,7 +200,7 @@ const Home = () => {
               </div>
             </form>
             <div className={`mx-4 mt-6 bg-[#fff0b4] rounded-full h-6 dark:bg-[#5e5b52]${currentStep == 0 ? " hidden" : ""}`}>
-              <div className='bg-[#ffdc5e] h-6 rounded-full text-lg font-medium text-white text-center p-0.5 leading-none' style={{width: `${loadingProgress}%`}}>Step {currentStep}/3</div>
+              <div className='bg-[#ffdc5e] h-6 rounded-full text-lg font-medium text-white text-center p-0.5 leading-none overflow-hidden whitespace-nowrap' style={{width: `${loadingProgress}%`}}>Step {currentStep}/3</div>
             </div>
             <div className={`mx-4 mt-6 flex flex-row justify-center rounded-full shadow-lg bg-[#ffdc5e]${audioOutput ? "" : " hidden"}`}>
               <a className='text-white w-full h-full py-4 text-3xl font-bold text-center' href={audioOutput} download>Download</a>
