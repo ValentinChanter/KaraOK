@@ -15,20 +15,23 @@ const Home = () => {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [audioOutput, setAudioOutput] = useState<string>('');
 
+  const loadingBarRefreshRate = 60
+  const loadingBarMs = 1000 / loadingBarRefreshRate
+
   const resetStates = () => {
     setProcessing(false);
     setLoadingProgress(0);
     setCurrentStep(0);
   }
 
-  const updateLoadingProgress = (elapsedTime: number, theoricalTime: number, step: number) => {
+  const updateLoadingProgress = (elapsedTime: number, theoricalTime: number) => {
     const newTime = Math.round(elapsedTime / theoricalTime * 100);
-    if (step == currentStep && newTime < 100) {
+    if (newTime < 100) {
       setLoadingProgress(newTime);
 
       setTimeout(() => {
-        updateLoadingProgress(elapsedTime + 0.5, theoricalTime, step);
-      }, 500);
+        updateLoadingProgress(elapsedTime + loadingBarMs / 1000, theoricalTime);
+      }, loadingBarMs);
     }
   }
 
@@ -55,12 +58,12 @@ const Home = () => {
       setAudioOutput('');
       setCurrentStep(1);
 
+      updateLoadingProgress(0, 8);
+
       const separationResponse = await fetch('/api/separate', {
         method: 'POST',
         body: separationForm,
       });
-
-      updateLoadingProgress(0, 8, 1);
 
       const separationResult = await separationResponse.json();
       if (separationResponse.ok) {
