@@ -15,7 +15,7 @@ const Home = () => {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [audioOutput, setAudioOutput] = useState<string>('');
 
-  const loadingBarRefreshRate = 60
+  const loadingBarRefreshRate = 30
   const loadingBarMs = 1000 / loadingBarRefreshRate
 
   const resetStates = () => {
