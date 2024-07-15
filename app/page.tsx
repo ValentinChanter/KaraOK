@@ -205,8 +205,10 @@ const Home = () => {
             <div className={`mx-4 mt-6 flex flex-row justify-center rounded-full shadow-lg bg-[#ffdc5e]${audioOutput ? "" : " hidden"}`}>
               <a className='text-white w-full h-full py-4 text-3xl font-bold text-center' href={audioOutput} download>Download</a>
             </div>
+            <div className={`mx-4 mt-6 flex flex-row justify-center${message ? "" : " hidden"}`}>
+              <p className='w-full h-full py-4 text-md text-center'>{message}</p>
+            </div>
         </div>
-      
       </div>
     </div>
   );
