@@ -4,6 +4,7 @@ import re
 from flask import request, jsonify, Blueprint
 from flask_cors import CORS
 
+import librosa
 from audio_separator.separator import Separator
 
 import yt_dlp
@@ -70,11 +71,15 @@ def separate_audio(filename):
         audio_end = time.time()
         audio_time = audio_end - audio_start
 
+        y, sr = librosa.load(inst_filepath)
+        audio_duration = librosa.get_duration(y=y, sr=sr)
+
         return jsonify({
             'base_filename': base_filename,
             'vocals_filename': vocals_filename,
             'inst_filename': inst_filename,
-            'audio_time': audio_time
+            'audio_time': audio_time,
+            'audio_duration': audio_duration
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

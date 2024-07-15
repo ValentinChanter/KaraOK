@@ -71,12 +71,13 @@ const Home = () => {
         const vocalsFilename = separationResult.vocals_filename;
         const instFilename = separationResult.inst_filename;
         const audioTime = separationResult.audio_time;
+        const audioDuration = separationResult.audio_duration;
         
         const transcriptionForm = new FormData();
         transcriptionForm.append('base_filename', baseFilename);
         transcriptionForm.append('vocals_filename', vocalsFilename);
 
-        updateLoadingProgress(0, 11, 2);
+        updateLoadingProgress(0, 11 * audioDuration / 20);
 
         const transcriptionResponse = await fetch('/api/transcribe', {
           method: 'POST',
@@ -98,7 +99,7 @@ const Home = () => {
           renderForm.append('inst_filename', instFilename);
           renderForm.append('transcription', transcriptionFilename);
 
-          updateLoadingProgress(0, 13, 3);
+          updateLoadingProgress(0, 13 * audioDuration / 20);
 
           const renderResponse = await fetch('/api/render', {
             method: 'POST',

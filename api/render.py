@@ -129,8 +129,6 @@ def render_blue_rectangle(rect_dict_list, base_position, duration, fps, video_si
 
 @render.route('/api/render', methods=['POST'])
 def render_audio():
-    video_start = time.time()
-
     alphabet = request.form.get('alphabet')
     translation_lang = request.form.get('translation')
     base_filename = request.form.get('base_filename')
