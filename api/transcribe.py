@@ -1,7 +1,7 @@
 import os
 import time
 import json
-from flask import Flask, request, jsonify
+from flask import request, jsonify, Blueprint
 from flask_cors import CORS
 import torch
 
@@ -14,11 +14,10 @@ from lyricsgenius import Genius
 from jiwer import wer
 import cutlet
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
-app.config['UPLOAD_FOLDER'] = 'uploads/'
-app.config['OUTPUT_FOLDER'] = 'output/'
-app.config['TMP_FOLDER'] = 'output/tmp/'
+transcribe = Blueprint("transcribe", __name__)
+CORS(transcribe)  # Enable CORS for cross-origin requests from the Next.js front end
+output_folder = 'output/'
+tmp_folder = os.path.join(output_folder, 'tmp/')
 
 async def get_and_compare_lyrics(filename, hypothesis, lang):
     shazam = Shazam()
@@ -59,30 +58,33 @@ def compare_lyrics(filename, hypothesis, lang):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(get_and_compare_lyrics(filename, hypothesis, lang))
 
-@app.route('/api/transcribe', methods=['POST'])
+@transcribe.route('/api/transcribe', methods=['POST'])
 def transcribe_audio():
     vocals_filename = request.form.get('vocals_filename')
-    vocals_filepath = os.path.join(app.config['TMP_FOLDER'], vocals_filename)
+    vocals_filepath = os.path.join(tmp_folder, vocals_filename)
 
-    transc_start = time.time()
-    audio = whisper.load_audio(vocals_filepath)
+    try:
+        transc_start = time.time()
+        audio = whisper.load_audio(vocals_filepath)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    whisper_model = whisper.load_model("medium", device=device)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        whisper_model = whisper.load_model("medium", device=device)
 
-    transcription_result = whisper.transcribe_timestamped(whisper_model, audio)
-    transcription_filename = f"{request.form.get('base_filename')}.json"
-    transcription_path = os.path.join(app.config['TMP_FOLDER'], transcription_filename)
-    with open(transcription_path, "w") as f:
-        json.dump(transcription_result, f)
+        transcription_result = whisper.transcribe_timestamped(whisper_model, audio)
+        transcription_filename = f"{request.form.get('base_filename')}.json"
+        transcription_path = os.path.join(tmp_folder, transcription_filename)
+        with open(transcription_path, "w") as f:
+            json.dump(transcription_result, f)
 
-    transc_end = time.time()
-    transc_time = transc_end - transc_start
+        transc_end = time.time()
+        transc_time = transc_end - transc_start
 
-    # WER calculation (optional)
-    # compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
+        # WER calculation (optional)
+        # compare_lyrics(filename, transcription_result["text"], transcription_result["language"])
 
-    return jsonify({
-        'transcription': transcription_filename,
-        'transc_time': transc_time
-    }), 200
+        return jsonify({
+            'transcription': transcription_filename,
+            'transc_time': transc_time
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

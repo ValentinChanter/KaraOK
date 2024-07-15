@@ -1,22 +1,22 @@
 import os
 import time
 import re
-from flask import Flask, request, jsonify
+from flask import request, jsonify, Blueprint
 from flask_cors import CORS
 
 from audio_separator.separator import Separator
 
 import yt_dlp
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
-app.config['UPLOAD_FOLDER'] = 'uploads/'
-app.config['OUTPUT_FOLDER'] = 'output/'
-app.config['TMP_FOLDER'] = app.config['OUTPUT_FOLDER'] + 'tmp/'
-app.config['ALLOWED_EXTENSIONS'] = {'mp3', 'wav'}
+separate = Blueprint('separate', __name__)
+CORS(separate)
+upload_folder = 'uploads/'
+output_folder = 'output/'
+tmp_folder = os.path.join(output_folder, 'tmp/')
+allowed_extensions = {'mp3', 'wav'}
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 def is_youtube_link(link):
     youtube_regex = (
@@ -43,14 +43,14 @@ def get_youtube_video_title(url):
 
 def separate_audio(filename):
     base_filename = os.path.splitext(filename)[0]
-    filename = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filename = os.path.join(upload_folder, filename)
 
     model_filename = request.form.get('model_filename')
 
     try:
         audio_start = time.time()
         separator = Separator(
-            output_dir=app.config['TMP_FOLDER'],
+            output_dir=tmp_folder,
             output_format="wav"
         )
         separator.load_model(model_filename=model_filename)
@@ -59,9 +59,9 @@ def separate_audio(filename):
         # Define the output file name based on the chosen model and output format
         base_model_filename = os.path.splitext(model_filename)[0]
         vocals_filename = f"{base_filename}_(Vocals)_{base_model_filename}.wav"
-        vocals_filepath = os.path.join(app.config['TMP_FOLDER'], vocals_filename)
+        vocals_filepath = os.path.join(tmp_folder, vocals_filename)
         inst_filename = f"{base_filename}_(Instrumental)_{base_model_filename}.wav"
-        inst_filepath = os.path.join(app.config['TMP_FOLDER'], inst_filename)
+        inst_filepath = os.path.join(tmp_folder, inst_filename)
 
         # Check if the separated file exists
         if not os.path.exists(inst_filepath):
@@ -79,14 +79,14 @@ def separate_audio(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@app.route('/api/separate', methods=['POST'])
+@separate.route('/api/separate', methods=['POST'])
 def upload_file():
     error = False
     if 'file' in request.files:
         file = request.files['file']
         if not(file.filename == ''):
             if file and allowed_file(file.filename):
-                filepathname = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+                filepathname = os.path.join(upload_folder, file.filename)
                 file.save(filepathname)
 
                 return separate_audio(file.filename)
@@ -100,7 +100,7 @@ def upload_file():
 
             filename = get_youtube_video_title(musicLink)
             filename = filename.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_").replace("#", "_")
-            filepathname = app.config['UPLOAD_FOLDER'] + filename
+            filepathname = upload_folder + filename
             filename = filename + ".mp3"
 
             ydl_opts = {

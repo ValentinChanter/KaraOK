@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from flask import Flask, request, jsonify
+from flask import request, jsonify, Blueprint
 from flask_cors import CORS
 
 import numpy as np
@@ -12,11 +12,10 @@ from moviepy.video.tools.subtitles import SubtitlesClip
 
 from googletrans import Translator
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for cross-origin requests from the Next.js front end
-app.config['UPLOAD_FOLDER'] = 'uploads/'
-app.config['OUTPUT_FOLDER'] = 'output/'
-app.config['TMP_FOLDER'] = 'output/tmp/'
+render = Blueprint("render", __name__)
+CORS(render)  # Enable CORS for cross-origin requests from the Next.js front end
+output_folder = 'output/'
+tmp_folder = os.path.join(output_folder, 'tmp/')
 
 # Function to split big sentences in latin languages
 def split_text(segments, lang):
@@ -128,7 +127,7 @@ def render_blue_rectangle(rect_dict_list, base_position, duration, fps, video_si
 
     return frames
 
-@app.route('/api/render', methods=['POST'])
+@render.route('/api/render', methods=['POST'])
 def render_audio():
     video_start = time.time()
 
@@ -136,265 +135,269 @@ def render_audio():
     translation_lang = request.form.get('translation')
     base_filename = request.form.get('base_filename')
     inst_filename = request.form.get('inst_filename')
-    inst_filepath = os.path.join(app.config['TMP_FOLDER'], inst_filename)
+    inst_filepath = os.path.join(tmp_folder, inst_filename)
 
     transcription_filename = request.form.get('transcription')
-    transcription_filepath = os.path.join(app.config['TMP_FOLDER'], transcription_filename)
+    transcription_filepath = os.path.join(tmp_folder, transcription_filename)
 
-    with open(transcription_filepath, 'r', encoding="utf-8") as f:
-        transcription_result = json.load(f)
+    try:
+        video_start = time.time()
+        with open(transcription_filepath, 'r', encoding="utf-8") as f:
+            transcription_result = json.load(f)
 
-    y, sr = librosa.load(inst_filepath)
-    audio_duration = librosa.get_duration(y=y, sr=sr)
+        y, sr = librosa.load(inst_filepath)
+        audio_duration = librosa.get_duration(y=y, sr=sr)
 
-    fps = 24
-    video_size = (1280, 720)
+        fps = 24
+        video_size = (1280, 720)
 
-    lang = transcription_result["language"]
-    is_latin = lang == "en" or lang == "es" or lang == "fr" or lang == "de" or lang == "it" or lang == "pt"
+        lang = transcription_result["language"]
+        is_latin = lang == "en" or lang == "es" or lang == "fr" or lang == "de" or lang == "it" or lang == "pt"
 
-    # Font name (monospace)
-    font = 'Consolas'
-    font_translated = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
-    if lang == "ja" and alphabet == "kanjitokana":
-        font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
-    font_size = 60 if lang == "ja" and alphabet == "kanjitokana" else 50
-    font_size_translated = 40
-    char_font_size = font_size if lang == "ja" and alphabet == "kanjitokana" else font_size * 34 / 60
-    font_height = 80
-    spaces_between_kana = 3
+        # Font name (monospace)
+        font = 'Consolas'
+        font_translated = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
+        if lang == "ja" and alphabet == "kanjitokana":
+            font = 'Meiryo-&-Meiryo-Italic-&-Meiryo-UI-&-Meiryo-UI-Italic'
+        font_size = 60 if lang == "ja" and alphabet == "kanjitokana" else 50
+        font_size_translated = 40
+        char_font_size = font_size if lang == "ja" and alphabet == "kanjitokana" else font_size * 34 / 60
+        font_height = 80
+        spaces_between_kana = 3
 
-    left_margin = 100
-    base_position = (left_margin, video_size[1] // 2)
-    kanji_list = []
-    furigana_list = []
+        left_margin = 100
+        base_position = (left_margin, video_size[1] // 2)
+        kanji_list = []
+        furigana_list = []
 
-    segments = transcription_result['segments']
+        segments = transcription_result['segments']
 
-    if lang == "ja":
-        if alphabet == "kanjitokana":
-            kanji_list, furigana_list = get_furigana_mapping(transcription_result["text"])
-        if alphabet == "romaji":
-            kks = pykakasi.kakasi()
-            for segment in segments:
-                result = kks.convert(segment["text"])
-                text_list = [item["hepburn"] for item in result]
-                tr_text_without_spaces = "".join(text_list)
+        if lang == "ja":
+            if alphabet == "kanjitokana":
+                kanji_list, furigana_list = get_furigana_mapping(transcription_result["text"])
+            if alphabet == "romaji":
+                kks = pykakasi.kakasi()
+                for segment in segments:
+                    result = kks.convert(segment["text"])
+                    text_list = [item["hepburn"] for item in result]
+                    tr_text_without_spaces = "".join(text_list)
 
-                acc_text = []
-                acc_start = 0
-                words = []
-                for i, w in enumerate(segment["words"]):
-                    curr_word = ""
-                    for j, c in enumerate(w["text"]):
-                        acc_res = kks.convert("".join(acc_text) + c)
-                        curr_res = kks.convert(c)
-                        acc_romaji = acc_res[0]["hepburn"]
-                        curr_romaji = curr_res[0]["hepburn"]
+                    acc_text = []
+                    acc_start = 0
+                    words = []
+                    for i, w in enumerate(segment["words"]):
+                        curr_word = ""
+                        for j, c in enumerate(w["text"]):
+                            acc_res = kks.convert("".join(acc_text) + c)
+                            curr_res = kks.convert(c)
+                            acc_romaji = acc_res[0]["hepburn"]
+                            curr_romaji = curr_res[0]["hepburn"]
 
-                        already_appended = False
+                            already_appended = False
 
-                        if tr_text_without_spaces.startswith(acc_romaji):
-                            tr_text_without_spaces = tr_text_without_spaces[len(acc_romaji):]
+                            if tr_text_without_spaces.startswith(acc_romaji):
+                                tr_text_without_spaces = tr_text_without_spaces[len(acc_romaji):]
 
-                            if len(acc_text) > 0:
-                                if 0x4E00 <= ord(c) <= 0x9FBF: # If word with multiple kanjis
+                                if len(acc_text) > 0:
+                                    if 0x4E00 <= ord(c) <= 0x9FBF: # If word with multiple kanjis
+                                        words.append({
+                                            "start": acc_start,
+                                            "end": w["end"],
+                                            "text": acc_romaji,
+                                            "confidence": w["confidence"],
+                                        })
+
+                                        already_appended = True
+                                    else:
+                                        words.append({
+                                            "start": acc_start,
+                                            "end": w["start"],
+                                            "text": acc_romaji.split(curr_romaji)[0],
+                                            "confidence": w["confidence"],
+                                        })
+
+                                    acc_text = []
+                                
+                                if j == len(w["text"]) - 1 and not already_appended: # If last character of word and not already appended
                                     words.append({
-                                        "start": acc_start,
+                                        "start": w["start"],
                                         "end": w["end"],
-                                        "text": acc_romaji,
+                                        "text": curr_word + curr_romaji,
                                         "confidence": w["confidence"],
                                     })
 
-                                    already_appended = True
                                 else:
-                                    words.append({
-                                        "start": acc_start,
-                                        "end": w["start"],
-                                        "text": acc_romaji.split(curr_romaji)[0],
-                                        "confidence": w["confidence"],
-                                    })
+                                    curr_word += curr_romaji
 
                                 acc_text = []
-                            
-                            if j == len(w["text"]) - 1 and not already_appended: # If last character of word and not already appended
-                                words.append({
-                                    "start": w["start"],
-                                    "end": w["end"],
-                                    "text": curr_word + curr_romaji,
-                                    "confidence": w["confidence"],
-                                })
-
                             else:
-                                curr_word += curr_romaji
+                                if len(acc_text) == 0:
+                                    acc_start = w["start"]
+                                acc_text.append(c)
 
-                            acc_text = []
-                        else:
-                            if len(acc_text) == 0:
-                                acc_start = w["start"]
-                            acc_text.append(c)
+                    segment["text"] = "".join(text_list)
+                    segment["words"] = words
 
-                segment["text"] = "".join(text_list)
-                segment["words"] = words
+                    # Using this method, single kanji read differently when paired with another kanji will be read differently.
+                    # Fix this by creat""ing a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
 
-                # Using this method, single kanji read differently when paired with another kanji will be read differently.
-                # Fix this by creat""ing a romaji mapping through furigana mapping and converting furigana to romaji (can limit it to words that are more than 2 kanji long)
+        # Split big sentences in latin languages
+        if is_latin:
+            segments = split_text(segments, lang)
 
-    # Split big sentences in latin languages
-    if is_latin:
-        segments = split_text(segments, lang)
+        #Format the transcription into a list like [((ta,tb),'some text'),...]
+        subs = [((0, segments[0]['start']), "[pause]")]
+        furiganas = [((0, segments[0]['start']), "[pause]")]
+        next_line = []
 
-    #Format the transcription into a list like [((ta,tb),'some text'),...]
-    subs = [((0, segments[0]['start']), "[pause]")]
-    furiganas = [((0, segments[0]['start']), "[pause]")]
-    next_line = []
+        doTranslation = translation_lang != "null" and translation_lang != lang
+        translatedSubs = []
+        if(doTranslation):
+            translatedSubs.append(((0, segments[0]['start']), "[pause]"))
+        translator = Translator()
 
-    doTranslation = translation_lang != "null" and translation_lang != lang
-    translatedSubs = []
-    if(doTranslation):
-        translatedSubs.append(((0, segments[0]['start']), "[pause]"))
-    translator = Translator()
+        for i, segment in enumerate(segments):
+            start = segment['start']
+            end = segment['end']
+            text = segment['text']
+            prev_start = 0
+            prev_end = 0
+            next_start = segments[segments.index(segment) + 1]['start'] if segment != segments[-1] else audio_duration
+            corrected_end = end + 3 if next_start - end >= 3 else next_start
 
-    for i, segment in enumerate(segments):
-        start = segment['start']
-        end = segment['end']
-        text = segment['text']
-        prev_start = 0
-        prev_end = 0
-        next_start = segments[segments.index(segment) + 1]['start'] if segment != segments[-1] else audio_duration
-        corrected_end = end + 3 if next_start - end >= 3 else next_start
+            subs.append(((start, corrected_end), text))
 
-        subs.append(((start, corrected_end), text))
+            if doTranslation:
+                translatedSubs.append(((start, corrected_end), translator.translate(text, dest=translation_lang).text))
 
-        if doTranslation:
-            translatedSubs.append(((start, corrected_end), translator.translate(text, dest=translation_lang).text))
-
-        if i > 0:
-            prev_start = segments[i - 1]['start']
-            prev_end = segments[i - 1]['end']
-            next_line.append(((prev_start, start if start - prev_end < 5 else prev_end + 5), text))
-        
-        # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
-        subs.append(((corrected_end, next_start), "[pause]"))
-        furiganas.append(((corrected_end, next_start), "[pause]"))
-    
-    blue_rect_x_pos = 0
-    blue_rectangle_dict_list = []
-    mapping_index = 0
-    # For every line, calculate blue rectangle position and populate furiganas
-    for i, segment in enumerate(segments):
-        start = segment['start']
-        end = segment['end']
-        text = segment['text']
-
-        # Set blue rectangle back to the left at the beginning of each segment
-        blue_rect_x_pos = base_position[0]
-
-        next_segment_exists = i < len(segments) - 1
-        next_segment = None
-        duration_before_next = 0
-        if next_segment_exists:
-            next_segment = segments[i + 1]
-            duration_before_next = next_segment['start'] - end
-
-        # Change end to start of next segment if it's too close, otherwise add 3 seconds
-        if next_segment_exists and duration_before_next < 3:
-            end = next_segment['start']
-        else:
-            end += 3
-
-        # Calculate blue rectangle position
-        words = segment['words']
-        for j, word in enumerate(words):
-            word_start = word['start']
-            word_end = word['end']
-            word_length = len(word['text'])
+            if i > 0:
+                prev_start = segments[i - 1]['start']
+                prev_end = segments[i - 1]['end']
+                next_line.append(((prev_start, start if start - prev_end < 5 else prev_end + 5), text))
             
-            new_pos = generate_blue_rectangle_movement_dict(blue_rect_x_pos, blue_rect_x_pos + word_length * char_font_size, word_start, word_end)
-            blue_rectangle_dict_list.append(new_pos)
-            blue_rect_x_pos += word_length * char_font_size
+            # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
+            subs.append(((corrected_end, next_start), "[pause]"))
+            furiganas.append(((corrected_end, next_start), "[pause]"))
+        
+        blue_rect_x_pos = 0
+        blue_rectangle_dict_list = []
+        mapping_index = 0
+        # For every line, calculate blue rectangle position and populate furiganas
+        for i, segment in enumerate(segments):
+            start = segment['start']
+            end = segment['end']
+            text = segment['text']
 
-        # Add furiganas to list if there are in current line of lyrics
-        if lang == "ja" and alphabet == "kanjitokana":
-            line_furiganas = ""
-            spaces_to_remove = 0
-            chars_to_skip = 0
-            for i, char in enumerate(text):
-                if chars_to_skip == 0 and 0x4E00 <= ord(char) <= 0x9FBF:
-                    line_furiganas += furigana_list[mapping_index]
+            # Set blue rectangle back to the left at the beginning of each segment
+            blue_rect_x_pos = base_position[0]
 
-                    chars_to_skip = len(kanji_list[mapping_index]) - 1
-                    spaces_to_remove += len(furigana_list[mapping_index]) - 2
+            next_segment_exists = i < len(segments) - 1
+            next_segment = None
+            duration_before_next = 0
+            if next_segment_exists:
+                next_segment = segments[i + 1]
+                duration_before_next = next_segment['start'] - end
 
-                    if spaces_to_remove < 0:
-                        for _ in range(- spaces_to_remove):
-                            line_furiganas += " " * spaces_between_kana
+            # Change end to start of next segment if it's too close, otherwise add 3 seconds
+            if next_segment_exists and duration_before_next < 3:
+                end = next_segment['start']
+            else:
+                end += 3
 
-                    mapping_index += 1
-                else:
-                    if chars_to_skip > 0:
-                        chars_to_skip -= 1
+            # Calculate blue rectangle position
+            words = segment['words']
+            for j, word in enumerate(words):
+                word_start = word['start']
+                word_end = word['end']
+                word_length = len(word['text'])
+                
+                new_pos = generate_blue_rectangle_movement_dict(blue_rect_x_pos, blue_rect_x_pos + word_length * char_font_size, word_start, word_end)
+                blue_rectangle_dict_list.append(new_pos)
+                blue_rect_x_pos += word_length * char_font_size
 
-                    spaces_to_add = 2 - spaces_to_remove
-                    if spaces_to_add > 0:
-                        line_furiganas += " " * (spaces_between_kana * spaces_to_add)
-                        if spaces_to_remove > 0:
-                            spaces_to_remove = 0
-                    elif spaces_to_remove > 2:
-                        spaces_to_remove -= 2
+            # Add furiganas to list if there are in current line of lyrics
+            if lang == "ja" and alphabet == "kanjitokana":
+                line_furiganas = ""
+                spaces_to_remove = 0
+                chars_to_skip = 0
+                for i, char in enumerate(text):
+                    if chars_to_skip == 0 and 0x4E00 <= ord(char) <= 0x9FBF:
+                        line_furiganas += furigana_list[mapping_index]
 
-            furiganas.append(((start, end), line_furiganas))
+                        chars_to_skip = len(kanji_list[mapping_index]) - 1
+                        spaces_to_remove += len(furigana_list[mapping_index]) - 2
 
-    # Create the subtitles
-    subs_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=2.5, size=(video_size[0] - base_position[0], font_height), align='West', method='caption', bg_color='white')
-    subtitles = SubtitlesClip(subs, subs_generator).to_mask()
+                        if spaces_to_remove < 0:
+                            for _ in range(- spaces_to_remove):
+                                line_furiganas += " " * spaces_between_kana
 
-    # Create the next subtitles
-    next_subs = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color='black', stroke_width=2.5, size=(video_size[0] - base_position[0] + font_height, font_height), align='West', method='caption', bg_color='white')
-    next_subtitles = SubtitlesClip(next_line, next_subs).set_position((base_position[0] + font_height, base_position[1] + 80))
+                        mapping_index += 1
+                    else:
+                        if chars_to_skip > 0:
+                            chars_to_skip -= 1
 
-    # Create translated subtitles
-    translated_subtitles = None
-    if doTranslation:
-        translated_subs_generator = lambda txt: TextClip(txt, font=font_translated, fontsize=font_size_translated, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.5, align='West', method='label', bg_color='white')
-        translated_subtitles = SubtitlesClip(translatedSubs, translated_subs_generator).set_position(("center", "top"))
+                        spaces_to_add = 2 - spaces_to_remove
+                        if spaces_to_add > 0:
+                            line_furiganas += " " * (spaces_between_kana * spaces_to_add)
+                            if spaces_to_remove > 0:
+                                spaces_to_remove = 0
+                        elif spaces_to_remove > 2:
+                            spaces_to_remove -= 2
 
-    # Create the furigana subtitles
-    furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
-    furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
+                furiganas.append(((start, end), line_furiganas))
 
-    # Black background displayed behind the blue rectangle
-    black_background = ColorClip(video_size, color=(0, 0, 0)).set_duration(audio_duration)
+        # Create the subtitles
+        subs_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=2.5, size=(video_size[0] - base_position[0], font_height), align='West', method='caption', bg_color='white')
+        subtitles = SubtitlesClip(subs, subs_generator).to_mask()
 
-    # Render blue rectangle
-    blue_rect_frames = render_blue_rectangle(blue_rectangle_dict_list, base_position, audio_duration, fps, video_size, font_height)
-    blue_rect = ImageSequenceClip(blue_rect_frames, fps=fps)
+        # Create the next subtitles
+        next_subs = lambda txt: TextClip(txt, font=font, fontsize=font_size, color='white', stroke_color='black', stroke_width=2.5, size=(video_size[0] - base_position[0] + font_height, font_height), align='West', method='caption', bg_color='white')
+        next_subtitles = SubtitlesClip(next_line, next_subs).set_position((base_position[0] + font_height, base_position[1] + 80))
 
-    # Apply mask to white rectangle
-    white_rect = ColorClip(video_size, color=(255, 255, 255)).set_duration(audio_duration)
-    white_rect_with_subs = white_rect.set_mask(subtitles).set_position(base_position)
-    white_rect_with_furigana = white_rect.set_mask(furigana_subtitles).set_position((base_position[0], base_position[1] - font_height // 2))
+        # Create translated subtitles
+        translated_subtitles = None
+        if doTranslation:
+            translated_subs_generator = lambda txt: TextClip(txt, font=font_translated, fontsize=font_size_translated, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.5, align='West', method='label', bg_color='white')
+            translated_subtitles = SubtitlesClip(translatedSubs, translated_subs_generator).set_position(("center", "top"))
 
-    # Draw white rectangles to mask the blue rectangle
-    top_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height // 2), color=(255, 255, 255)).set_duration(audio_duration)
-    left_white_rect = ColorClip((left_margin, font_height + font_height // 2), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 - font_height // 2))
-    bottom_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 + font_height))
+        # Create the furigana subtitles
+        furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
+        furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
 
-    # Load audio file
-    audio = AudioFileClip(inst_filepath)
-    if translated_subtitles != None:
-        final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles, translated_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
-    else:
-        final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
+        # Black background displayed behind the blue rectangle
+        black_background = ColorClip(video_size, color=(0, 0, 0)).set_duration(audio_duration)
 
-    # Save the final video
-    video_filename = f"{base_filename}.mp4"
-    video_filepath = os.path.join(app.config['OUTPUT_FOLDER'], video_filename)
-    final_video.write_videofile(video_filepath, fps=fps)
+        # Render blue rectangle
+        blue_rect_frames = render_blue_rectangle(blue_rectangle_dict_list, base_position, audio_duration, fps, video_size, font_height)
+        blue_rect = ImageSequenceClip(blue_rect_frames, fps=fps)
 
-    video_end = time.time()
+        # Apply mask to white rectangle
+        white_rect = ColorClip(video_size, color=(255, 255, 255)).set_duration(audio_duration)
+        white_rect_with_subs = white_rect.set_mask(subtitles).set_position(base_position)
+        white_rect_with_furigana = white_rect.set_mask(furigana_subtitles).set_position((base_position[0], base_position[1] - font_height // 2))
 
-    return jsonify({
-        'video': video_filepath,
-        'render_time': video_end - video_start
-    }), 200
+        # Draw white rectangles to mask the blue rectangle
+        top_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height // 2), color=(255, 255, 255)).set_duration(audio_duration)
+        left_white_rect = ColorClip((left_margin, font_height + font_height // 2), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 - font_height // 2))
+        bottom_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 + font_height))
+
+        # Load audio file
+        audio = AudioFileClip(inst_filepath)
+        if translated_subtitles != None:
+            final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles, translated_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
+        else:
+            final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
+
+        # Save the final video
+        video_filename = f"{base_filename}.mp4"
+        video_filepath = os.path.join(output_folder, video_filename)
+        final_video.write_videofile(video_filepath, fps=fps)
+
+        video_end = time.time()
+
+        return jsonify({
+            'video': video_filepath,
+            'render_time': video_end - video_start
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
