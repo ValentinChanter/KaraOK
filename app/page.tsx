@@ -2,7 +2,7 @@
 
 import { useState, ChangeEvent, FormEvent } from 'react';
 import Image from "next/image"
-
+  
 const Home = () => {
   const [file, setFile] = useState<File | null>(null);
   const [musicLink, setMusicLink] = useState<string>('');
@@ -11,6 +11,26 @@ const Home = () => {
   const [processing, setProcessing] = useState<boolean>(false);
   const [alphabet, setAlphabet] = useState<string>('kanjitokana');
   const [translation, setTranslation] = useState<string>('null');
+  const [loadingProgress, setLoadingProgress] = useState<number>(0);
+  const [currentStep, setCurrentStep] = useState<number>(0);
+  const [audioOutput, setAudioOutput] = useState<string>('');
+
+  const resetStates = () => {
+    setProcessing(false);
+    setLoadingProgress(0);
+    setCurrentStep(0);
+  }
+
+  const updateLoadingProgress = (elapsedTime: number, theoricalTime: number, step: number) => {
+    const newTime = Math.round(elapsedTime / theoricalTime * 100);
+    if (step == currentStep && newTime < 100) {
+      setLoadingProgress(newTime);
+
+      setTimeout(() => {
+        updateLoadingProgress(elapsedTime + 0.5, theoricalTime, step);
+      }, 500);
+    }
+  }
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -25,41 +45,100 @@ const Home = () => {
       return;
     }
 
-    const formData = new FormData();
-    if (file) {
-      formData.append('file', file);
-    }
-    formData.append('musicLink', musicLink);
-    formData.append('model_filename', modelFilename);
-    formData.append('alphabet', alphabet);
-    formData.append('translation', translation);
+    const separationForm = new FormData();
+    if (musicLink.length > 0) separationForm.append('musicLink', musicLink);
+    else if (file) separationForm.append('file', file);
+    separationForm.append('model_filename', modelFilename);
 
     try {
       setProcessing(true);
-      setMessage('Processing...');
-      const response = await fetch('/api/upload', {
+      setAudioOutput('');
+      setCurrentStep(1);
+
+      const separationResponse = await fetch('/api/separate', {
         method: 'POST',
-        body: formData,
-        // Remove timeout settings or make sure the request waits indefinitely
+        body: separationForm,
       });
-      const result = await response.json();
-      if (response.ok) {
-        setMessage(`Success: ${result.message}`);
-        setProcessing(false);
+
+      updateLoadingProgress(0, 8, 1);
+
+      const separationResult = await separationResponse.json();
+      if (separationResponse.ok) {
+        setCurrentStep(2);
+        setLoadingProgress(100);
+
+        const baseFilename = separationResult.base_filename;
+        const vocalsFilename = separationResult.vocals_filename;
+        const instFilename = separationResult.inst_filename;
+        const audioTime = separationResult.audio_time;
+        
+        const transcriptionForm = new FormData();
+        transcriptionForm.append('base_filename', baseFilename);
+        transcriptionForm.append('vocals_filename', vocalsFilename);
+
+        updateLoadingProgress(0, 11, 2);
+
+        const transcriptionResponse = await fetch('/api/transcribe', {
+          method: 'POST',
+          body: transcriptionForm,
+        });
+
+        const transcriptionResult = await transcriptionResponse.json();
+        if (transcriptionResponse.ok) {
+          setCurrentStep(3);
+          setLoadingProgress(100);
+
+          const transcriptionFilename = transcriptionResult.transcription;
+          const transcTime = transcriptionResult.transc_time;
+
+          const renderForm = new FormData();
+          renderForm.append('alphabet', alphabet);
+          renderForm.append('translation', translation);
+          renderForm.append('base_filename', baseFilename);
+          renderForm.append('inst_filename', instFilename);
+          renderForm.append('transcription', transcriptionFilename);
+
+          updateLoadingProgress(0, 13, 3);
+
+          const renderResponse = await fetch('/api/render', {
+            method: 'POST',
+            body: renderForm,
+          });
+
+          const renderResult = await renderResponse.json();
+          if (renderResponse.ok) {
+            setCurrentStep(0);
+            setLoadingProgress(100);
+
+            const videoPath = renderResult.video_path;
+            const renderTime = renderResult.render_time;
+
+            setAudioOutput(videoPath);
+            setMessage(`Success! Audio time: ${audioTime}, Transcription time: ${transcTime}, Render time: ${renderTime}`);
+            setProcessing(false);
+            setLoadingProgress(0);
+          } else {
+            setMessage(`Error in render: ${renderResult.error}`);
+            resetStates();
+          }
+        } else {
+          setMessage(`Error in transcription: ${transcriptionResult.error}`);
+          resetStates();
+        }
       } else {
-        setMessage(`Error: ${result.error}`);
-        setProcessing(false);
+        setMessage(`Error in separation: ${separationResult.error}`);
+        resetStates();
       }
     } catch (error) {
       setMessage('Error uploading file.');
-      setProcessing(false);
+      resetStates();
     }
   };
 
   return (
     <div className='relative flex min-h-screen flex-col justify-center overflow-hidden bg-gray-50 py-6'>
       <div className="absolute inset-0 bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
-      <div className='relative w-[740px] mx-auto bg-white px-6 pt-10 pb-8 shadow-xl ring-1 ring-gray-900/5'>
+      <div className='relative w-[740px] mx-auto bg-white px-6 pt-10 pb-8 shadow-xl ring-1 ring-gray-900/5 rounded-lg'>
         <div className='mx-auto text-black'>
           <a href="https://github.com/ValentinChanter/KaraOK" target="_blank" className='flex flex-row justify-center mb-8'>
             <Image src="/../public/logo.png" width={300} height={200} alt="KaraOK"/>
@@ -112,13 +191,15 @@ const Home = () => {
                     <option value="es">Spanish</option>
                 </select>
               </div>
-              <div className='mx-4 mt-6 flex flex-row justify-center bg-[#ffdc5e] rounded-full shadow-lg'>
+              <div className={`mx-4 mt-6 flex flex-row justify-center rounded-full shadow-lg ${processing ? "bg-slate-500" : "bg-[#ffdc5e]"}`}>
                 <button className='text-white w-full h-full py-4 text-3xl font-bold' disabled={processing}>OK!</button>
               </div>
             </form>
-            <div className='mx-4 mt-6 flex flex-row justify-center py-4'>
-              {message && <p className="text-sm">{message}</p>}
-
+            <div className={`mx-4 mt-6 bg-[#fff0b4] rounded-full h-6 dark:bg-[#5e5b52]${currentStep == 0 ? " hidden" : ""}`}>
+              <div className='bg-[#ffdc5e] h-6 rounded-full text-lg font-medium text-white text-center p-0.5 leading-none' style={{width: `${loadingProgress}%`}}>Step {currentStep}/3</div>
+            </div>
+            <div className={`mx-4 mt-6 flex flex-row justify-center rounded-full shadow-lg bg-[#ffdc5e]${audioOutput ? "" : " hidden"}`}>
+              <a className='text-white w-full h-full py-4 text-3xl font-bold text-center' href={audioOutput} download>Download</a>
             </div>
         </div>
       
