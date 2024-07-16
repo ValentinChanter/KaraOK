@@ -16,6 +16,8 @@ render = Blueprint("render", __name__)
 CORS(render)  # Enable CORS for cross-origin requests from the Next.js front end
 output_folder = 'output/'
 tmp_folder = os.path.join(output_folder, 'tmp/')
+public_folder = 'public/'
+public_output_folder = os.path.join(public_folder, 'output/')
 
 # Function to split big sentences in latin languages
 def split_text(segments, lang):
@@ -389,7 +391,8 @@ def render_audio():
         # Save the final video
         video_filename = f"{base_filename}.mp4"
         video_filepath = os.path.join(output_folder, video_filename)
-        final_video.write_videofile(video_filepath, fps=fps)
+        public_video_filepath = os.path.join(public_folder, video_filepath)
+        final_video.write_videofile(public_video_filepath, fps=fps)
 
         video_end = time.time()
 

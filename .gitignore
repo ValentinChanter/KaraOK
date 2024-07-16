@@ -15,6 +15,10 @@
 !/output/tmp
 /output/tmp/*
 !/output/tmp/.gitkeep
+/public/*
+!/public/output
+/public/output/*
+!/public/output/.gitkeep
 
 # testing
 /coverage
