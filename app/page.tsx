@@ -130,7 +130,7 @@ const Home = () => {
             const renderTime = renderResult.render_time;
 
             setAudioOutput(videoPath);
-            setMessage(`Success! Audio time: ${audioTime}, Transcription time: ${transcTime}, Render time: ${renderTime}`);
+            setMessage(`Success! Separation time: ${separationTime}, Transcription time: ${transcTime}, Render time: ${renderTime}`);
             setProcessing(false);
             setLoadingProgress(0);
           } else {
