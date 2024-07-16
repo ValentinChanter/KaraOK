@@ -24,15 +24,30 @@ const Home = () => {
     setCurrentStep(0);
   }
 
+  const timeouts: NodeJS.Timeout[] = []
+
   const updateLoadingProgress = (elapsedTime: number, theoricalTime: number) => {
     const newTime = Math.round(elapsedTime / theoricalTime * 100);
     if (newTime < 100) {
       setLoadingProgress(newTime);
 
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         updateLoadingProgress(elapsedTime + loadingBarMs / 1000, theoricalTime);
       }, loadingBarMs);
+      timeouts.push(timeout);
     }
+  }
+
+  const clearTimeouts = () => {
+    for (const timeout of timeouts) {
+      clearTimeout(timeout);
+    }
+  }
+
+  const setNewStep = (step: number) => {
+    setCurrentStep(step);
+    clearTimeouts();
+    setLoadingProgress(0);
   }
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -67,8 +82,7 @@ const Home = () => {
 
       const separationResult = await separationResponse.json();
       if (separationResponse.ok) {
-        setCurrentStep(2);
-        setLoadingProgress(100);
+        setNewStep(2);
 
         const baseFilename = separationResult.base_filename;
         const vocalsFilename = separationResult.vocals_filename;
@@ -89,8 +103,7 @@ const Home = () => {
 
         const transcriptionResult = await transcriptionResponse.json();
         if (transcriptionResponse.ok) {
-          setCurrentStep(3);
-          setLoadingProgress(100);
+          setNewStep(3);
 
           const transcriptionFilename = transcriptionResult.transcription;
           const transcTime = transcriptionResult.transc_time;
@@ -111,8 +124,7 @@ const Home = () => {
 
           const renderResult = await renderResponse.json();
           if (renderResponse.ok) {
-            setCurrentStep(0);
-            setLoadingProgress(100);
+            setNewStep(0);
 
             const videoPath = renderResult.video_path;
             const renderTime = renderResult.render_time;
