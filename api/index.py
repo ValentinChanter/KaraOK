@@ -6,6 +6,7 @@ from api.transcribe import transcribe
 from api.render import render
 
 app = Flask(__name__)
+CORS(app)
 app.register_blueprint(separate)
 app.register_blueprint(transcribe)
 app.register_blueprint(render)
