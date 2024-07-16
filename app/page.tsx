@@ -73,7 +73,8 @@ const Home = () => {
       setAudioOutput('');
       setCurrentStep(1);
 
-      updateLoadingProgress(0, 8);
+      const separationExpectedTime = 8
+      updateLoadingProgress(0, separationExpectedTime);
 
       const separationResponse = await fetch('/api/separate', {
         method: 'POST',
@@ -94,7 +95,8 @@ const Home = () => {
         transcriptionForm.append('base_filename', baseFilename);
         transcriptionForm.append('vocals_filename', vocalsFilename);
 
-        updateLoadingProgress(0, 11 * audioDuration / 20);
+        const transcriptionExpectedTime = 11 * audioDuration / 20
+        updateLoadingProgress(0, transcriptionExpectedTime);
 
         const transcriptionResponse = await fetch('/api/transcribe', {
           method: 'POST',
@@ -115,7 +117,8 @@ const Home = () => {
           renderForm.append('inst_filename', instFilename);
           renderForm.append('transcription', transcriptionFilename);
 
-          updateLoadingProgress(0, 13 * audioDuration / 20);
+          const renderExpectedTime = 13 * audioDuration / 20
+          updateLoadingProgress(0, renderExpectedTime);
 
           const renderResponse = await fetch('/api/render', {
             method: 'POST',
