@@ -247,7 +247,7 @@ def render_audio():
 
         #Format the transcription into a list like [((ta,tb),'some text'),...]
         subs = [((0, segments[0]['start']), "[pause]")]
-        furiganas = [((0, segments[0]['start']), "[pause]")]
+        furiganas = [((0, segments[0]['start']), "[pause]")] if lang == "ja" and alphabet == "kanjitokana" else []
         next_line = []
 
         doTranslation = translation_lang != "null" and translation_lang != lang
@@ -277,7 +277,8 @@ def render_audio():
             
             # Also append an empty text from end to start of next subtitle (or end of song if it is the last one) to hide blue rectangle
             subs.append(((corrected_end, next_start), "[pause]"))
-            furiganas.append(((corrected_end, next_start), "[pause]"))
+            if lang == "ja" and alphabet == "kanjitokana":
+                furiganas.append(((corrected_end, next_start), "[pause]"))
         
         blue_rect_x_pos = 0
         blue_rectangle_dict_list = []
@@ -311,7 +312,7 @@ def render_audio():
                 word_end = word['end']
                 word_length = len(word['text'])
                 
-                new_pos = generate_blue_rectangle_movement_dict(blue_rect_x_pos, blue_rect_x_pos + word_length * char_font_size, word_start, word_end)
+                new_pos = generate_blue_rectangle_movement_dict(blue_rect_x_pos, blue_rect_x_pos + word_length * char_font_size * (1 if lang == "ja" and alphabet == "kanjitokana" else 1.3), word_start, word_end)
                 blue_rectangle_dict_list.append(new_pos)
                 blue_rect_x_pos += word_length * char_font_size
 
@@ -361,8 +362,9 @@ def render_audio():
             translated_subtitles = SubtitlesClip(translatedSubs, translated_subs_generator).set_position(("center", "top"))
 
         # Create the furigana subtitles
-        furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
-        furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
+        if lang == "ja" and alphabet == "kanjitokana":
+            furi_generator = lambda txt: TextClip(txt, font=font, fontsize=font_size // 2, color='white', stroke_color=('white' if txt == "[pause]" else 'black'), stroke_width=1.25, size=(video_size[0] - base_position[0], font_height // 2), align='West', method='caption', bg_color='white')
+            furigana_subtitles = SubtitlesClip(furiganas, furi_generator).to_mask()
 
         # Black background displayed behind the blue rectangle
         black_background = ColorClip(video_size, color=(0, 0, 0)).set_duration(audio_duration)
@@ -374,19 +376,27 @@ def render_audio():
         # Apply mask to white rectangle
         white_rect = ColorClip(video_size, color=(255, 255, 255)).set_duration(audio_duration)
         white_rect_with_subs = white_rect.set_mask(subtitles).set_position(base_position)
-        white_rect_with_furigana = white_rect.set_mask(furigana_subtitles).set_position((base_position[0], base_position[1] - font_height // 2))
+        if lang == "ja" and alphabet == "kanjitokana":
+            white_rect_with_furigana = white_rect.set_mask(furigana_subtitles).set_position((base_position[0], base_position[1] - font_height // 2))
 
         # Draw white rectangles to mask the blue rectangle
-        top_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height // 2), color=(255, 255, 255)).set_duration(audio_duration)
+        top_white_rect = ColorClip((video_size[0], video_size[1] // 2 - (font_height // 2 if lang == "ja" and alphabet == "kanjitokana" else 0)), color=(255, 255, 255)).set_duration(audio_duration)
         left_white_rect = ColorClip((left_margin, font_height + font_height // 2), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 - font_height // 2))
         bottom_white_rect = ColorClip((video_size[0], video_size[1] // 2 - font_height), color=(255, 255, 255)).set_duration(audio_duration).set_position((0, video_size[1] // 2 + font_height))
 
         # Load audio file
         audio = AudioFileClip(inst_filepath)
+        clips = [black_background, blue_rect, white_rect_with_subs]
+        
+        if lang == "ja" and alphabet == "kanjitokana":
+            clips.append(white_rect_with_furigana)
+        
+        clips += [top_white_rect, left_white_rect, bottom_white_rect, next_subtitles]
+
         if translated_subtitles != None:
-            final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles, translated_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
-        else:
-            final_video = CompositeVideoClip([black_background, blue_rect, white_rect_with_subs, white_rect_with_furigana, top_white_rect, left_white_rect, bottom_white_rect, next_subtitles], size=video_size).set_duration(audio_duration).set_audio(audio)
+            clips.append(translated_subtitles)
+            
+        final_video = CompositeVideoClip(clips, size=video_size).set_duration(audio_duration).set_audio(audio)
 
         # Save the final video
         video_filename = f"{base_filename}.mp4"
