@@ -331,6 +331,8 @@ def render_audio():
                         if spaces_to_remove < 0:
                             for _ in range(- spaces_to_remove):
                                 line_furiganas += " " * spaces_between_kana
+                            
+                            spaces_to_remove = 0
 
                         mapping_index += 1
                     else:
