@@ -73,7 +73,7 @@ const Home = () => {
         const baseFilename = separationResult.base_filename;
         const vocalsFilename = separationResult.vocals_filename;
         const instFilename = separationResult.inst_filename;
-        const audioTime = separationResult.audio_time;
+        const separationTime = separationResult.separation_time;
         const audioDuration = separationResult.audio_duration;
         
         const transcriptionForm = new FormData();

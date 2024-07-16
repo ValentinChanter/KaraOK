@@ -78,7 +78,7 @@ def separate_audio(filename):
             'base_filename': base_filename,
             'vocals_filename': vocals_filename,
             'inst_filename': inst_filename,
-            'audio_time': audio_time,
+            'separation_time': audio_time,
             'audio_duration': audio_duration
         }), 200
     except Exception as e:
