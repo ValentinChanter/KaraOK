@@ -312,9 +312,10 @@ def render_audio():
                 word_end = word['end']
                 word_length = len(word['text'])
                 
-                new_pos = generate_blue_rectangle_movement_dict(blue_rect_x_pos, blue_rect_x_pos + word_length * char_font_size * (1 if lang == "ja" and alphabet == "kanjitokana" else 1.3), word_start, word_end)
+                new_x = blue_rect_x_pos + word_length * char_font_size * (1 if lang == "ja" and alphabet == "kanjitokana" else 1) # TODO: Fix latin characters rectangle speed
+                new_pos = generate_blue_rectangle_movement_dict(blue_rect_x_pos, new_x, word_start, word_end)
                 blue_rectangle_dict_list.append(new_pos)
-                blue_rect_x_pos += word_length * char_font_size
+                blue_rect_x_pos = new_x
 
             # Add furiganas to list if there are in current line of lyrics
             if lang == "ja" and alphabet == "kanjitokana":
@@ -329,12 +330,12 @@ def render_audio():
                         spaces_to_remove += len(furigana_list[mapping_index]) - 2
 
                         if spaces_to_remove < 0:
-                            for _ in range(- spaces_to_remove):
-                                line_furiganas += " " * spaces_between_kana
+                            line_furiganas += " " * (spaces_between_kana * abs(spaces_to_remove))
                             
                             spaces_to_remove = 0
 
                         mapping_index += 1
+
                     else:
                         if chars_to_skip > 0:
                             chars_to_skip -= 1
@@ -344,7 +345,7 @@ def render_audio():
                             line_furiganas += " " * (spaces_between_kana * spaces_to_add)
                             if spaces_to_remove > 0:
                                 spaces_to_remove = 0
-                        elif spaces_to_remove > 2:
+                        elif spaces_to_remove >= 2:
                             spaces_to_remove -= 2
 
                 furiganas.append(((start, end), line_furiganas))
