@@ -126,7 +126,7 @@ const Home = () => {
           if (renderResponse.ok) {
             setNewStep(0);
 
-            const videoPath = renderResult.video_path;
+            const videoPath = renderResult.video;
             const renderTime = renderResult.render_time;
 
             setAudioOutput(videoPath);
