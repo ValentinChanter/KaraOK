@@ -12,6 +12,8 @@ from moviepy.video.tools.subtitles import SubtitlesClip
 
 from googletrans import Translator
 
+import unicodedata
+
 render = Blueprint("render", __name__)
 CORS(render)  # Enable CORS for cross-origin requests from the Next.js front end
 output_folder = 'output/'
@@ -63,6 +65,75 @@ def split_text(segments, lang):
             "confidence": segment["confidence"],
             "words": curr_words
         })
+
+    return new_segments
+
+def is_kanji(char):
+    code_point = ord(char)
+    if 0x4E00 <= code_point <= 0x9FFF or \
+       0x3400 <= code_point <= 0x4DBF or \
+       0x20000 <= code_point <= 0x2A6DF:
+        return True
+    return False
+
+def split_text_ja(segments):
+    i = 0
+    new_segments = []
+    for segment in segments:
+        char_list = list(segment["text"])
+        char_list_len = len(char_list)
+        begin = 0
+        split_index = 0
+        
+        while char_list_len >= 12:
+            split_index += 10
+            remove = 10
+            while(not is_kanji(char_list[split_index-1]) and is_kanji(char_list[split_index])):
+                split_index += 1
+                remove += 1
+            
+            index_last_word = 0
+            nb_words_tmp = 0
+            for word in segment["words"]:
+                nb_words_tmp += len(list(word["text"]))
+                if nb_words_tmp >= split_index:
+                    break
+                index_last_word += 1
+
+            new_segments.append({
+                "id": i,
+                "seek": segment["seek"],
+                "start": segment["words"][begin]["start"],
+                "end": segment["words"][index_last_word-1]["end"],
+                "text": "".join([w["text"] for w in segment["words"][begin:index_last_word]]),
+                "temperature": segment["temperature"],
+                "avg_logprob": segment["avg_logprob"],
+                "compression_ratio": segment["compression_ratio"],
+                "no_speech_prob": segment["no_speech_prob"],
+                "confidence": segment["confidence"],
+                "words": segment["words"][begin:index_last_word]
+            })
+
+            i += 1
+            begin = index_last_word
+            char_list_len -= remove
+
+        if char_list_len > 0:
+            new_segments.append({
+                "id": i,
+                "seek": segment["seek"],
+                "start": segment["words"][begin]["start"],
+                "end": segment["end"],
+                "text": "".join([w["text"] for w in segment["words"][begin:]]),
+                "temperature": segment["temperature"],
+                "avg_logprob": segment["avg_logprob"],
+                "compression_ratio": segment["compression_ratio"],
+                "no_speech_prob": segment["no_speech_prob"],
+                "confidence": segment["confidence"],
+                "words": segment["words"][begin:]
+            })
+
+            i += 1
 
     return new_segments
 
@@ -173,6 +244,7 @@ def render_audio():
         segments = transcription_result['segments']
 
         if lang == "ja":
+            segments = split_text_ja(segments)
             if alphabet == "kanjitokana":
                 kanji_list, furigana_list = get_furigana_mapping(transcription_result["text"])
             if alphabet == "romaji":
