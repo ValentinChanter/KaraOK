@@ -88,7 +88,7 @@ def split_text_ja(segments):
         while char_list_len >= 12:
             split_index += 10
             remove = 10
-            while(is_kanji(char_list[split_index-1]) and is_kanji(char_list[split_index])):
+            while(is_kanji(char_list[split_index]) and is_kanji(char_list[split_index+1])):
                 split_index += 1
                 remove += 1
             
