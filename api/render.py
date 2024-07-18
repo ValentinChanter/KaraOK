@@ -83,14 +83,17 @@ def split_text_ja(segments):
         char_list = list(segment["text"])
         char_list_len = len(char_list)
         begin = 0
-        split_index = 0
+        split_index = -1
         
-        while char_list_len >= 12:
+        while char_list_len >= 13:
             split_index += 10
             remove = 10
-            while(is_kanji(char_list[split_index]) and is_kanji(char_list[split_index+1])):
+            while(split_index + 1 < char_list_len and is_kanji(char_list[split_index]) and is_kanji(char_list[split_index+1])):
                 split_index += 1
                 remove += 1
+
+            if split_index >= char_list_len:
+                split_index = char_list_len - 1 
             
             index_last_word = 0
             nb_words_tmp = 0
@@ -135,6 +138,87 @@ def split_text_ja(segments):
 
             i += 1
 
+    return new_segments
+
+def split_text_spaces_1_ja(segments):
+    new_segments = []
+    id = 0 
+
+    for segment in segments:
+
+        words = segment["words"]
+        contains_space = False
+
+        for word in words:
+            if word["text"] == ' ':
+                contains_space = True
+                break
+
+        if contains_space:
+    
+            current_words = []
+            current_words_tmp = []
+            space_nb = 0
+            
+            for word in words:
+                if(word["text"] != ' '):
+                    current_words_tmp.append(word)
+                else:
+                    current_words.append(current_words_tmp)
+                    current_words_tmp = []
+                    space_nb += 1
+            space_nb += 1
+            current_words.append(current_words_tmp)
+
+            i = 0
+            for i in range(space_nb):
+                new_segments.append({
+                    "id": id,
+                    "seek": segment["seek"],
+                    "start": current_words[i][0]["start"],
+                    "end": current_words[i][-1]["end"],
+                    "text": "".join([w["text"] for w in current_words[i]]),
+                    "temperature": segment["temperature"],
+                    "avg_logprob": segment["avg_logprob"],
+                    "compression_ratio": segment["compression_ratio"],
+                    "no_speech_prob": segment["no_speech_prob"],
+                    "confidence": segment["confidence"],
+                    "words": current_words[i]
+                })
+                id += 1
+        else:
+            new_segments.append(segment)
+            id += 1
+    return new_segments
+
+def remove_spaces_ja(segments):
+    new_segments = []
+    
+    for segment in segments:
+
+        words = segment["words"]
+        new_words = []
+        for word in words:
+            new_word = word
+            new_word["text"] = word["text"].replace(" ", "")
+            new_words.append(new_word)
+
+        new_text = segment["text"].replace(" ", "")
+
+        new_segments.append({
+            "id": segment["id"],
+            "seek": segment["seek"],
+            "start": segment["start"],
+            "end": segment["end"],
+            "text": new_text,
+            "temperature": segment["temperature"],
+            "avg_logprob": segment["avg_logprob"],
+            "compression_ratio": segment["compression_ratio"],
+            "no_speech_prob": segment["no_speech_prob"],
+            "confidence": segment["confidence"],
+            "words": new_words
+        })
+    
     return new_segments
 
 # Function to create 2 lists, one with the kanji and one with the furigana. They're matched by index.
@@ -244,6 +328,8 @@ def render_audio():
         segments = transcription_result['segments']
 
         if lang == "ja":
+            segments = split_text_spaces_1_ja(segments)
+            segments = remove_spaces_ja(segments)
             segments = split_text_ja(segments)
             if alphabet == "kanjitokana":
                 kanji_list, furigana_list = get_furigana_mapping(transcription_result["text"])
