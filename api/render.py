@@ -483,7 +483,7 @@ def render_audio():
                 for i, char in enumerate(text):
                     if(mapping_index >= len(kanji_list) or mapping_index >= len(furigana_list)):
                         break
-                    if chars_to_skip == 0 and 0x4E00 <= ord(char) <= 0x9FBF:
+                    if chars_to_skip == 0 and 0x4E00 <= ord(char) <= 0x9FBF and char in kanji_list[mapping_index]:
                         line_furiganas += furigana_list[mapping_index]
 
                         chars_to_skip = len(kanji_list[mapping_index]) - 1
