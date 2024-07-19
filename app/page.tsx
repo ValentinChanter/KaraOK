@@ -95,7 +95,7 @@ const Home = () => {
         transcriptionForm.append('base_filename', baseFilename);
         transcriptionForm.append('vocals_filename', vocalsFilename);
 
-        const transcriptionExpectedTime = 11 * audioDuration / 20
+        const transcriptionExpectedTime = 31.5 * audioDuration / 132
         updateLoadingProgress(0, transcriptionExpectedTime);
 
         const transcriptionResponse = await fetch('/api/transcribe', {
@@ -117,7 +117,7 @@ const Home = () => {
           renderForm.append('inst_filename', instFilename);
           renderForm.append('transcription', transcriptionFilename);
 
-          const renderExpectedTime = 13 * audioDuration / 20
+          const renderExpectedTime = 274.25 * audioDuration / 244
           updateLoadingProgress(0, renderExpectedTime);
 
           const renderResponse = await fetch('/api/render', {
