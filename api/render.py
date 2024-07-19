@@ -565,7 +565,7 @@ def render_audio():
         video_filename = f"{base_filename}.mp4"
         video_filepath = os.path.join(output_folder, video_filename)
         public_video_filepath = os.path.join(public_folder, video_filepath)
-        final_video.write_videofile(public_video_filepath, fps=fps)
+        final_video.write_videofile(public_video_filepath, fps=fps, codec='libx264', audio_codec='aac', preset='veryfast')
 
         video_end = time.time()
 
